@@ -7,6 +7,8 @@ import type { StudioLike, StudioObjectSummary } from "../../src/client/load";
 let theme = "dark";
 const objects: StudioObjectSummary[] = [];
 let downloads = 0;
+let studioLocale: string | undefined;
+let studioOnLocaleChange: ((locale: string) => void) | undefined;
 const studio: StudioLike = {
   loadStructure: async () => {},
   loadVolume: async () => {},
@@ -23,7 +25,17 @@ const studio: StudioLike = {
 // Run in a child process so these rendering boundaries cannot replace modules
 // used by the built-artifact/registration tests in the parent Bun test process.
 mock.module("@molstudio/react", () => ({
-  Studio: ({ onReady }: { onReady: (studio: StudioLike) => void }) => {
+  Studio: ({
+    onReady,
+    locale,
+    onLocaleChange,
+  }: {
+    onReady: (studio: StudioLike) => void;
+    locale?: string;
+    onLocaleChange?: (locale: string) => void;
+  }) => {
+    studioLocale = locale;
+    studioOnLocaleChange = onLocaleChange;
     useEffect(() => { onReady(studio); }, [onReady]);
     return createElement("div", { "data-test-stage": true });
   },
@@ -43,6 +55,8 @@ try {
   for (let i = 0; i < 100 && status() !== "ready"; i++) await flush();
   assert.equal(status(), "ready");
   assert.equal(downloads, 1);
+  assert.ok(studioLocale === "en" || studioLocale === "zh-CN", "Studio receives a MolStudio catalog locale");
+  assert.equal(typeof studioOnLocaleChange, "function", "Studio receives onLocaleChange so the language menu appears");
   const originalObject = objects[0];
   theme = "light";
   await act(async () => { renderer.update(createElement(StructureTabView, { path: "pdb:1CBS" })); });

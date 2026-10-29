@@ -116,7 +116,7 @@ bun run verify:fast  # specs + lint + typecheck + build + test —— 钩子与 
 
 - **不支持 Binary CIF（`.bcif`）** —— 它不在 Mol\* 内置的 trajectory 格式列表里。
 - 工作区浏览器一次只列一层目录，没有跨工作区的索引。
-- viewer 界面目前只有英文。
+- 工作区浏览器、加载与错误提示仍是英文；MolStudio 的对象列表与工具栏跟随 DSH 语言，也可在 viewer 里切换。
 
 ## 许可证
 

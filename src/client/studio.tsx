@@ -37,6 +37,7 @@ import { CloseIcon, ErrorIcon, RetryIcon, SpinnerIcon } from "./icons";
 import { loadIntoStudio } from "./load";
 import type { StudioLike } from "./load";
 import type { MarkersPayload, StructurePayload, ViewerPayload } from "./payload";
+import { useViewerLocale } from "./use-locale";
 
 export interface BioViewerProps {
   /** The file or database entry to display, already resolved by the descriptor. */
@@ -68,6 +69,7 @@ interface LoadAttempt {
  * entry does not exist or the network is down.
  */
 export function BioViewer({ payload, theme }: BioViewerProps): ReactElement {
+  const { locale, onLocaleChange } = useViewerLocale();
   const [studio, setStudio] = useState<StudioLike | null>(null);
   const [studioError, setStudioError] = useState<string | null>(null);
   /** The newest *settled* attempt; the visible status is derived from it. */
@@ -133,7 +135,13 @@ export function BioViewer({ payload, theme }: BioViewerProps): ReactElement {
       data-dsh-bioviewer-status={studio === null ? "starting" : status}
     >
       <div style={STAGE_STYLE}>
-        <Studio theme={theme} onReady={handleReady} onError={handleStudioError} />
+        <Studio
+          theme={theme}
+          locale={locale}
+          onLocaleChange={onLocaleChange}
+          onReady={handleReady}
+          onError={handleStudioError}
+        />
         {overlay !== null && <div style={OVERLAY_STYLE}>{overlay}</div>}
         {studioError !== null && (
           <div style={BANNER_STYLE} role="alert">

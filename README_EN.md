@@ -157,7 +157,9 @@ Markdown/spec-only PRs run the same gate. Releases remain manual; no release aut
   trajectory format list.
 - The workspace browser lists one directory level at a time; there is no
   cross-workspace index.
-- The viewer UI is English-only.
+- The workspace browser and loading/error copy are still English; MolStudio's
+  object list and toolbar follow the DSH language and can be switched in the
+  viewer.
 
 ## License
 
