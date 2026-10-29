@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "BioViewer",
+    "description": "View biomolecular structures, cryo-EM density maps and small molecules from the filesystem in the sidebar."
+  }
+}

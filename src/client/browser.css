@@ -1,0 +1,201 @@
+/*
+ * BioViewer workspace browser styles.
+ *
+ * Every visual value comes from a DSH custom property (`--dsw-alias-*`,
+ * `--dsw-font-*`, `--ds-*`) — there is not a single hardcoded color, so all
+ * DSH skins apply automatically (external-plugin guide §12).
+ *
+ * Layout note: the DSH native tab body is a fixed-height BLOCK scroller, not a
+ * flex container, so the root claims the full height itself
+ * (`height: 100%; min-height: 0; overflow: auto`) and scrolls internally.
+ */
+
+.dsh-bioviewer {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family, inherit);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dsh-bioviewer *,
+.dsh-bioviewer *::before,
+.dsh-bioviewer *::after {
+  box-sizing: border-box;
+}
+
+/* --- current directory bar ------------------------------------------------ */
+
+.dsh-bioviewer__bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.dsh-bioviewer__cwd {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--ds-font-family-code, ui-monospace);
+  font-size: 11px;
+}
+
+.dsh-bioviewer__icon-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  transition: background-color 100ms linear;
+}
+
+.dsh-bioviewer__icon-button:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-bioviewer__icon-button:active:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.dsh-bioviewer__icon-button:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  cursor: default;
+}
+
+/* --- rows ----------------------------------------------------------------- */
+
+.dsh-bioviewer__list {
+  display: block;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+}
+
+.dsh-bioviewer__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 100ms linear;
+}
+
+.dsh-bioviewer__row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsh-bioviewer__row:active {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.dsh-bioviewer__glyph {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-bioviewer__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dsh-bioviewer__badge {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 3px;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--ds-font-family-code, ui-monospace);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.dsh-bioviewer__chevron {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-dimmed);
+}
+
+/* --- states --------------------------------------------------------------- */
+
+.dsh-bioviewer__status {
+  margin: 0;
+  padding: 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-bioviewer__status--error {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dsh-bioviewer__message {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.dsh-bioviewer__hint {
+  margin: 4px 0 0;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-bioviewer__action {
+  margin-top: 8px;
+  padding: 3px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 100ms linear;
+}
+
+.dsh-bioviewer__action:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsh-bioviewer__notice {
+  margin: 0;
+  padding: 6px 10px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+/* --- focus (keyboard) ----------------------------------------------------- */
+
+.dsh-bioviewer__row:focus-visible,
+.dsh-bioviewer__icon-button:focus-visible,
+.dsh-bioviewer__action:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -2px;
+}

@@ -1,0 +1,41 @@
+/**
+ * Styles for the plugin's own message surfaces (the marker-model pane and the
+ * viewer's "nothing loaded" fallback).
+ *
+ * Token-only: every color and font comes from the DSH skin contract
+ * (`--dsw-alias-*` / `--dsw-font-*`), so all skins apply without per-skin work.
+ * Fallbacks are deliberately neutral rather than branded, so a missing token
+ * degrades to readable text instead of an invisible panel.
+ *
+ * The host mounts a tab body inside a fixed-height block scroller, so the panel
+ * claims the full height itself rather than relying on a flex parent.
+ */
+.dsh-bioviewer-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+  font-family: var(--dsw-font-family, system-ui, sans-serif);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-primary, #1f2329);
+  background: var(--dsw-alias-bg-layer-1, transparent);
+}
+
+.dsh-bioviewer-notice strong {
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary, #1f2329);
+}
+
+.dsh-bioviewer-notice span {
+  color: var(--dsw-alias-label-secondary, #646a73);
+}
+
+/* The last paragraph carries the "why" — keep it visually subordinate. */
+.dsh-bioviewer-notice span:last-child {
+  color: var(--dsw-alias-label-tertiary, #8f959e);
+}

@@ -1,0 +1,19 @@
+# dsh-bioviewer bundle patch
+#
+# This file is the `dsh.bundle.patch` layer of the published package: when the
+# plugin is installed through the official CLI —
+#
+#   dsh plugin --profile <name> add dsh-bioviewer@<version>
+#
+# — the command reconciles `dsh.profile.bundles` against the installed packages
+# and, seeing this declaration, appends `dsh-bioviewer` to the bundle stack. The
+# profile boot then merges THIS patch, which is a single `insert` of the plugin
+# row, exactly like a hand-written mount line in the profile's own
+# cordis.patch.yml. No profile file edits are needed.
+#
+# `dsh-better-sidebar` is deliberately NOT a dependency here. The plugin degrades
+# to a no-op when that service is absent (see src/client/index.tsx), so requiring
+# it would turn an optional integration into a hard install requirement.
+- insert:
+    - id: dsh-bioviewer
+      name: 'dsh-bioviewer'
