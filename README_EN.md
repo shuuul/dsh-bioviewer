@@ -53,15 +53,19 @@ Every extension also works with a `.gz` suffix (`1abc.pdb.gz`, `map.mrc.gz`, …
 
 ## Install
 
-The plugin is not published to npm yet, so install it from a checkout.
-
-**With the DSH CLI** (once published):
-
 ```sh
 dsh plugin --profile web add dsh-bioviewer
 ```
 
-**From a local checkout**, mount it into a profile:
+`dsh-better-sidebar` is **optional**: without it the plugin loads and does
+nothing. Install it to get the viewers:
+
+```sh
+dsh plugin --profile web add dsh-better-sidebar@latest
+```
+
+**From a local checkout** (for development), build first, then mount it into a
+profile:
 
 ```sh
 bun install && bun run build
@@ -86,13 +90,6 @@ Then, in `~/.dsh/profiles/<profile>/`:
 
 3. `pnpm install` in the profile directory, then hard-refresh the browser
    (Cmd/Ctrl+Shift+R).
-
-`dsh-better-sidebar` is **optional**: without it the plugin loads and does
-nothing. Install it to get the viewers:
-
-```sh
-dsh plugin --profile web add dsh-better-sidebar@latest
-```
 
 ## Usage
 

@@ -310,9 +310,9 @@ this one exists only to exercise the host half and is torn down immediately.
 
 ## Releasing
 
-There is **no release workflow**, by design: nothing is published yet, and this
-repo has not opted into release-please. When a release is wanted, the manual
-sequence is:
+There is **no release workflow**, by design: this repo has not opted into
+release-please. `lib/` is gitignored; `prepublishOnly` builds it before
+`npm publish`. When a release is wanted, the manual sequence is:
 
 1. `bun run verify:fast` on a clean checkout, plus the full `bun test` suite.
 2. Bump `version` in `package.json` and commit it (`chore(release): vX.Y.Z`).

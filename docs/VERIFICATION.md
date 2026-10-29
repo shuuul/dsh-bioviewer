@@ -9,7 +9,7 @@ Verification now uses the [tracked-spec index](../specs/README.md).
   `33434bd14decd5dbfa1cffa8fc0069e25b6ec2ff824b3ab6f2ef45bc6ce7790f`.
 - [002 — Loader fixes and spec migration](../specs/archive/002-loader-fixes-and-spec-migration.md)
   records completed local acceptance, fixture-based WebGL checks and explicit
-  remaining limitations. Changes are not yet committed or published.
+  remaining limitations. Loader fixes landed in `997ae42`.
 
 The old report's PASS verdicts apply only to the revisions/environment it names;
 they are not proof of the current checkout. Its section 8 explicitly leaves real

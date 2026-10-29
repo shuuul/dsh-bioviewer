@@ -20,6 +20,7 @@ const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
   peerDependencies?: Record<string, string>;
   peerDependenciesMeta?: Record<string, { optional?: boolean }>;
   dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
 };
 
@@ -84,6 +85,15 @@ describe("DSH package manifest", () => {
   test("no dependency or peer is the unscoped cordis package (marketplace rule)", () => {
     for (const group of [pkg.dependencies, pkg.peerDependencies, pkg.optionalDependencies]) {
       expect(Object.keys(group ?? {})).not.toContain("cordis");
+    }
+  });
+
+  test("Mol* and MolStudio stay out of the published runtime install", () => {
+    // The client half bundles them; listing them as dependencies would make a
+    // DSH profile download molstar (~84 MB unpacked) and inherit React 19 peers.
+    for (const name of ["@molstudio/core", "@molstudio/react", "molstar"]) {
+      expect(pkg.dependencies?.[name]).toBeUndefined();
+      expect(pkg.devDependencies?.[name]).toBeDefined();
     }
   });
 });

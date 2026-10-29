@@ -81,7 +81,7 @@ const ourPkg = JSON.parse(read(join(root, "package.json"))) as {
   peerDependenciesMeta?: Record<string, { optional?: boolean }>;
   exports: Record<string, unknown>;
   dsh?: { client?: { platform?: string }; manifestVersion?: number };
-  dependencies: Record<string, string>;
+  dependencies?: Record<string, string>;
   devDependencies: Record<string, string>;
 };
 
@@ -99,7 +99,7 @@ describe("C6 installed dsh-better-sidebar contract", () => {
 
   test("dsh-better-sidebar is a peer dependency (optional), never a runtime dependency", () => {
     expect(ourPkg.peerDependencies["dsh-better-sidebar"]).toBeDefined();
-    expect(ourPkg.dependencies["dsh-better-sidebar"]).toBeUndefined();
+    expect(ourPkg.dependencies?.["dsh-better-sidebar"]).toBeUndefined();
     expect(ourPkg.peerDependenciesMeta?.["dsh-better-sidebar"]?.optional).toBe(true);
   });
 
@@ -237,7 +237,7 @@ describe("C6 installed dsh-better-sidebar contract", () => {
 
     // The other half of the rule: a DSH package must never be a runtime
     // dependency, because the profile provides it.
-    const asDependency = Object.keys(ourPkg.dependencies).filter((name) => name.startsWith("@deepseek-ai/"));
+    const asDependency = Object.keys(ourPkg.dependencies ?? {}).filter((name) => name.startsWith("@deepseek-ai/"));
     expect(asDependency).toEqual([]);
   });
 

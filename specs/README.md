@@ -13,7 +13,7 @@ explicit acceptance evidence, or a handoff. Specs record execution, not permanen
 | Spec | Completed | Outcome |
 | --- | --- | --- |
 | [001 — Historical verification migration](archive/001-historical-verification-migration.md) | 2026-10-29 | Preserve revision 7 evidence, not certify unfinished UI checks. |
-| [002 — Loader fixes and spec migration](archive/002-loader-fixes-and-spec-migration.md) | 2026-10-29 | Loader fixes, scoped WebGL acceptance and tracked-spec gate; local changes unpublished. |
+| [002 — Loader fixes and spec migration](archive/002-loader-fixes-and-spec-migration.md) | 2026-10-29 | Loader fixes, scoped WebGL acceptance and tracked-spec gate. |
 
 ## Lifecycle and ownership
 

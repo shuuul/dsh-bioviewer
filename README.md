@@ -37,15 +37,17 @@
 
 ## 安装
 
-插件尚未发布到 npm，因此从本地检出安装。
-
-**用 DSH CLI**（发布之后）：
-
 ```sh
 dsh plugin --profile web add dsh-bioviewer
 ```
 
-**从本地检出安装**，把插件挂进某个 profile：
+`dsh-better-sidebar` 是**可选**依赖：没有它，插件照常加载，但什么都不做。要看到 viewer，请安装它：
+
+```sh
+dsh plugin --profile web add dsh-better-sidebar@latest
+```
+
+**从本地检出安装**（开发用），先构建再挂进某个 profile：
 
 ```sh
 bun install && bun run build
@@ -68,12 +70,6 @@ bun install && bun run build
    ```
 
 3. 在 profile 目录里执行 `pnpm install`，然后硬刷新浏览器（Cmd/Ctrl+Shift+R）。
-
-`dsh-better-sidebar` 是**可选**依赖：没有它，插件照常加载，但什么都不做。要看到 viewer，请安装它：
-
-```sh
-dsh plugin --profile web add dsh-better-sidebar@latest
-```
 
 ## 使用
 
