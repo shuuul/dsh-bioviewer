@@ -4,6 +4,7 @@ import {
   BIO_FORMATS,
   detectBioFile,
   isBioFile,
+  isBinaryCifFile,
   type BioFormat,
   type BioKind,
 } from "../src/shared/formats";
@@ -16,6 +17,7 @@ const EXPECTED: Readonly<Record<string, { id: string; kind: BioKind; molstarForm
   cif: { id: "mmcif", kind: "structure", molstarFormat: "mmcif" },
   mmcif: { id: "mmcif", kind: "structure", molstarFormat: "mmcif" },
   mcif: { id: "mmcif", kind: "structure", molstarFormat: "mmcif" },
+  bcif: { id: "mmcif", kind: "structure", molstarFormat: "mmcif" },
   mrc: { id: "ccp4", kind: "volume", molstarFormat: "ccp4" },
   map: { id: "ccp4", kind: "volume", molstarFormat: "ccp4" },
   ccp4: { id: "ccp4", kind: "volume", molstarFormat: "ccp4" },
@@ -82,12 +84,12 @@ describe("BIO_EXTENSIONS", () => {
     expect([...BIO_EXTENSIONS]).toEqual(union);
   });
 
-  test("covers every contracted extension and holds exactly the 16 plain ones", () => {
+  test("covers every contracted extension and holds exactly the 17 plain ones", () => {
     for (const ext of Object.keys(EXPECTED)) {
       expect(BIO_EXTENSIONS).toContain(ext);
     }
     expect(new Set(BIO_EXTENSIONS)).toEqual(new Set(Object.keys(EXPECTED)));
-    expect(BIO_EXTENSIONS.length).toBe(16);
+    expect(BIO_EXTENSIONS.length).toBe(17);
   });
 
   test("has no gz entries: a `.gz` file's host-side extension is literally `gz`", () => {
@@ -244,6 +246,15 @@ describe("detectBioFile", () => {
     for (const name of ["1abc.pdb", "1abc.pdb.gz", "LIG.SDF", "x.cmm.gz"]) {
       expect(isBioFile(name)).toBe(true);
     }
+  });
+
+  test("isBinaryCifFile is true only for .bcif names, including gzip", () => {
+    expect(isBinaryCifFile("1abc.bcif")).toBe(true);
+    expect(isBinaryCifFile("/data/1ABC.BCIF")).toBe(true);
+    expect(isBinaryCifFile("1abc.bcif.gz")).toBe(true);
+    expect(isBinaryCifFile("1abc.cif")).toBe(false);
+    expect(isBinaryCifFile("1abc.pdb")).toBe(false);
+    expect(isBinaryCifFile("notes.txt")).toBe(false);
   });
 });
 

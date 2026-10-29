@@ -308,6 +308,15 @@ describe("resolveOpen: files", () => {
     });
   });
 
+  test("accepts Binary CIF as the mmCIF format", () => {
+    expect(resolveOpen("/data/1abc.bcif", undefined, undefined).request).toEqual({
+      kind: "file",
+      path: "/data/1abc.bcif",
+      title: "1abc.bcif",
+      formatId: "mmcif",
+    });
+  });
+
   test("normalises a path before it is queued", () => {
     const resolved = resolveOpen("./models/../1abc.ent", undefined, "/work/session");
     expect(resolved.target).toBe("/work/session/1abc.ent");

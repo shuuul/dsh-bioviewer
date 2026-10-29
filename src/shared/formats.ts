@@ -70,7 +70,10 @@ export const BIO_FORMATS: readonly BioFormat[] = Object.freeze<BioFormat[]>([
     id: "mmcif",
     kind: "structure",
     molstarFormat: "mmcif",
-    exts: ["cif", "mmcif", "mcif"],
+    // `.bcif` is the mmCIF reader's binary extension, not its own Mol* id
+    // (`binaryExtensions: ['bcif']` on MmcifProvider). loadIntoStudio must
+    // pass the bytes as a Uint8Array; decoding them as text corrupts the file.
+    exts: ["cif", "mmcif", "mcif", "bcif"],
     label: "mmCIF structure",
   },
   {
@@ -132,8 +135,8 @@ export const BIO_FORMATS: readonly BioFormat[] = Object.freeze<BioFormat[]>([
 ]);
 
 /**
- * Flat, sorted, de-duplicated list of the 16 plain extensions the plugin
- * renders: `["ccp4", "cif", "cmm", "ent", ...]`.
+ * Flat, sorted, de-duplicated list of the 17 plain extensions the plugin
+ * renders: `["bcif", "ccp4", "cif", "cmm", "ent", ...]`.
  *
  * This is the extension surface of the plugin (what the viewer descriptors
  * claim and what the tests enumerate) — it is NOT the routing table for
@@ -194,4 +197,15 @@ export function detectBioFile(pathOrName: string): DetectedBioFile | undefined {
 /** True when {@link detectBioFile} recognizes the name. */
 export function isBioFile(pathOrName: string): boolean {
   return detectBioFile(pathOrName) !== undefined;
+}
+
+/**
+ * True when the name is Binary CIF (`.bcif` / `.bcif.gz`).
+ *
+ * Mol* reads these through the mmCIF provider, but only when the data is a
+ * `Uint8Array`. A text decode would make the parse fail or yield nothing.
+ */
+export function isBinaryCifFile(pathOrName: string): boolean {
+  const detected = detectBioFile(pathOrName);
+  return detected !== undefined && detected.baseName.toLowerCase().endsWith(".bcif");
 }

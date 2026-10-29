@@ -1,6 +1,6 @@
 {
   "name": "dsh-bioviewer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "View biomolecular structures, cryo-EM maps and small molecules from the filesystem inside DeepSeek Harness.",
   "type": "module",
   "packageManager": "bun@1.4.4",

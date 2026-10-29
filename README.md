@@ -2,28 +2,21 @@
 
 [English](README_EN.md) · **中文**
 
-在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的侧边栏里，直接查看文件系统中的生物大分子结构、冷冻电镜密度图与小分子。
-
-这是一个 DSH 插件：它向第三方插件 [`dsh-better-sidebar`](https://github.com/omdsh-dev/DSH-better-sidebar) 注册结构生物学格式的文件预览器，因此在侧边栏打开 `.pdb`、`.cif` 或 `.mrc` 时，会用 [Mol\*](https://molstar.org)（经 [`@molstudio/react`](https://www.npmjs.com/package/@molstudio/react)）以 3D 渲染——与 [BioViewer VS Code 扩展](https://github.com/shuuul/bioviewer) 使用同一套 viewer 栈。
+在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 侧边栏里查看生物大分子、冷冻电镜密度图与小分子。插件向 [`dsh-better-sidebar`](https://github.com/omdsh-dev/DSH-better-sidebar) 注册预览器，用 [Mol\*](https://molstar.org)（[`@molstudio/react`](https://www.npmjs.com/package/@molstudio/react)）渲染，与 [BioViewer VS Code 扩展](https://github.com/shuuul/bioviewer) 同一套 viewer。
 
 ## 功能
 
-- **结构** —— PDB 与 mmCIF，带 MolStudio 的对象列表，以及按对象的表示方式、配色方案、不透明度与聚焦控制。
-- **密度图** —— MRC / MAP / CCP4 体数据，带等值面控制与密度直方图。
-- **小分子** —— SDF、MOL、MOL2、PDBQT、GRO 与 XYZ。
-- **标记模型** —— Chimera `.cmm`：marker 画成球、link 画成管，带自己的颜色与半径，可以和密度图叠在同一个视图里。
-- **压缩文件** —— 上述所有格式都支持 `.gz` 后缀；文件在传输时保持压缩，在浏览器中解压。
-- **工作区浏览器** —— 一个「BioViewer」侧边栏 tab，列出会话工作目录下的生物文件，不用离开侧边栏就能找到它们。
-- **Agent 可以自己打开** —— 模型可以调用 `bio_open` 工具，把某个文件或某个数据库条目（`pdb:1cbs`、`alphafold:P00533`、`emdb:EMD-1234`）直接推到你的侧边栏里。
-- **跟随宿主** —— viewer 跟随 DSH 的明暗主题，并使用 DSH 设计令牌，因此所有皮肤都无需逐个适配。
-- **实时重载** —— 当你正在查看的文件被模型改写时，视图会自行重载，并**替换**旧对象，而不是叠加一个重复项。
+- PDB / mmCIF / Binary CIF、MRC 密度图、小分子，以及 Chimera `.cmm` 标记（可与密度图叠图）
+- 所有格式支持 `.gz`；「BioViewer」tab 浏览工作区；跟随 DSH 明暗主题
+- 文件被改写时**替换**重载，不叠加
+- 模型可用 `bio_open` 打开文件或数据库条目（`pdb:1cbs`、`alphafold:P00533`、`emdb:EMD-1234`）
 
 ## 支持的格式
 
 | 类别 | 扩展名 | Mol\* reader |
 | --- | --- | --- |
 | 结构 | `pdb` `ent` | `pdb` |
-| 结构 | `cif` `mmcif` `mcif` | `mmcif` |
+| 结构 | `cif` `mmcif` `mcif` `bcif` | `mmcif` |
 | 体数据 | `mrc` `map` `ccp4` | `ccp4` |
 | 小分子 | `sdf` `sd` | `sdf` |
 | 小分子 | `mol` | `mol` |
@@ -31,92 +24,44 @@
 | 小分子 | `pdbqt` | `pdbqt` |
 | 小分子 | `gro` | `gro` |
 | 小分子 | `xyz` | `xyz` |
-| 标记模型 | `cmm` | 由 MolStudio 画成球与管（marker / link） |
+| 标记模型 | `cmm` | MolStudio 画成球与管 |
 
-每个扩展名也都支持 `.gz` 后缀（`1abc.pdb.gz`、`map.mrc.gz` 等）。
+每个扩展名也都支持 `.gz`（`1abc.pdb.gz`、`map.mrc.gz` 等）。
 
 ## 安装
 
 ```sh
 dsh plugin --profile web add dsh-bioviewer
-```
-
-`dsh-better-sidebar` 是**可选**依赖：没有它，插件照常加载，但什么都不做。要看到 viewer，请安装它：
-
-```sh
 dsh plugin --profile web add dsh-better-sidebar@latest
 ```
 
-**从本地检出安装**（开发用），先构建再挂进某个 profile：
+没有 better-sidebar 时插件会加载，但不显示 viewer。开发用本地检出：
 
 ```sh
 bun install && bun run build
+dsh plugin --profile web add "link:$PWD"
 ```
-
-然后在 `~/.dsh/profiles/<profile>/` 下：
-
-1. 把插件加进 `package.json`：
-
-   ```json
-   { "dependencies": { "dsh-bioviewer": "link:/absolute/path/to/dsh-bioviewer" } }
-   ```
-
-2. 往 `cordis.patch.yml` 加挂载行（或者直接依赖 `dsh.bundle.patch`，官方 CLI 走的就是这条路）：
-
-   ```yaml
-   - insert:
-       - id: dsh-bioviewer
-         name: 'dsh-bioviewer'
-   ```
-
-3. 在 profile 目录里执行 `pnpm install`，然后硬刷新浏览器（Cmd/Ctrl+Shift+R）。
 
 ## 使用
 
-- **从侧边栏** —— 在 `+` 菜单里打开「BioViewer」tab，列出会话工作目录下的生物文件，然后点一个。或者通过宿主的文件树、聊天里的链接打开任意受支持的文件，注册的 viewer 会接管编辑区。
-- **压缩文件** —— `.gz` 文件通过内容嗅探路由，用起来和未压缩版本完全一样。
+侧边栏 `+` 菜单打开「BioViewer」，或从文件树 / 聊天链接打开受支持的文件。`.gz` 与未压缩文件用法相同。
 
-## Agent 触发打开
+## Agent 打开
 
-除了自己点文件，你也可以让模型直接把东西推到侧边栏。宿主半注册了一个 `bio_open` 工具：
-
-| 参数 | 说明 |
-| --- | --- |
-| `target` | 文件路径（绝对路径，或相对于会话工作目录），或数据库条目：`pdb:1cbs`、`alphafold:P00533`、`emdb:EMD-1234` |
-| `title` | 可选，tab 标题（默认用文件名，或数据库名 + 编号） |
-
-它的返回值带一个 `delivered` 字段：`true` 表示侧边栏当时连着、已经上屏；`false` 表示那一侧的会话侧边栏还没挂载，这次打开**排队**在那里，等它下次上屏时送达。
-
-和 better-sidebar 自带的 `sidebar_open` 的区别在于它是**生物感知**的：扩展名会先跟本插件的格式表核对，不支持的文件会被明确拒绝并附上可支持的扩展名清单，而不是悄悄落到文本编辑器里；数据库条目则完全不需要本地文件。
-
-链路是：工具把请求按会话入队 → 侧边栏用一个长轮询（`GET bioviewer/open?sessionId=…`）取走 → 客户端打开文件（走编辑器，由注册的 viewer 接管）或打开一个结构 tab。之所以要自己搭这条链路，是因为 `ctx.sidebarRight` 是**纯客户端**服务（它的宿主半对宿主树没有任何贡献），宿主侧没有别的办法把一次打开推进浏览器。
+`bio_open` 的 `target` 是路径或 `pdb:` / `alphafold:` / `emdb:` 条目，`title` 可选。`delivered: true` 表示已上屏；`false` 表示侧边栏未挂载、已排队。不支持的扩展名会被拒绝，并列出可支持格式。
 
 ## 开发
 
-本地与 CI 使用 Bun **1.4.4**（`packageManager` 与 `setup-bun` 均固定版本）。
+Bun **1.4.4**。`bun run verify:fast` 是 pre-push 与 CI 的门禁。架构与宿主契约见 [AGENTS.md](AGENTS.md)；规格见 [规格索引](specs/README.md)；[历史验证](docs/VERIFICATION.md) 不是当前验收。
 
 ```sh
 bun install
-bun run build        # lib/index.js（宿主半）+ lib/client.js（客户端半）
-bun run typecheck    # tsc --noEmit
-bun run lint         # oxlint
-bun test             # bun:test
-bun run check:specs  # 规格生命周期、编号与索引校验
-bun run verify:fast  # specs + lint + typecheck + build + test —— 钩子与 CI 用的就是这条
+bun run verify:fast
 ```
-
-`verify:fast` 就是 `.husky/pre-push` 与 CI 跑的同一件事；`pre-commit` 只对暂存文件跑 `oxlint`，`commit-msg` 强制 Conventional Commits。
-
-架构、本插件依赖的宿主契约，以及那些容易被重新引入的坑，都记在 [AGENTS.md](AGENTS.md) 里。
-跨仓库与并行工作的执行记录见 [规格索引](specs/README.md)；
-[历史验证入口](docs/VERIFICATION.md) 链接原始证据，不代表当前版本或未完成 UI 检查已通过。
-仅修改 Markdown/规格的 PR 也运行同一校验门禁。发布仍为手动流程，不添加发布自动化。
 
 ## 已知限制
 
-- **不支持 Binary CIF（`.bcif`）** —— 它不在 Mol\* 内置的 trajectory 格式列表里。
-- 工作区浏览器一次只列一层目录，没有跨工作区的索引。
-- 工作区浏览器、加载与错误提示仍是英文；MolStudio 的对象列表与工具栏跟随 DSH 语言，也可在 viewer 里切换。
+工作区浏览器只列一层；浏览器与加载提示仍是英文（MolStudio 跟随 DSH 语言）。
 
 ## 许可证
 

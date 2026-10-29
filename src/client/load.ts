@@ -29,6 +29,7 @@
  * structure that merely shares its name.
  */
 import type { MarkerSet } from "@molstudio/core";
+import { isBinaryCifFile } from "../shared/formats";
 import type { BioViewerPayload, MarkersPayload, StructurePayload, ViewerPayload } from "./payload";
 
 /**
@@ -85,10 +86,9 @@ const pendingLoads = new WeakMap<StudioLike, Promise<void>>();
  * - `"volume"` — the raw bytes are handed over untouched. Our volume formats
  *   are binary density-map containers (MRC/CCP4), and Mol*'s volume readers
  *   take the container bytes; decoding them as text would corrupt the map.
- * - `"structure"` / `"molecule"` — decoded to text. Every structure/molecule
- *   format in our table is a text format, and Mol*'s trajectory parser treats
- *   a `Uint8Array` as BinaryCIF (mmcif) or as raw binary, so the bytes must be
- *   decoded here or the parse fails / silently yields nothing.
+ * - `"structure"` / `"molecule"` — decoded to text, except Binary CIF
+ *   (`.bcif`): Mol*'s mmCIF reader takes a `Uint8Array` as BinaryCIF and a
+ *   `string` as text CIF, so decoding `.bcif` would corrupt the file.
  * - `"markers"` — rejected with a clear error: a `.cmm` file reaches Mol* as a
  *   `kind: "markers"` payload (each `<marker_set>` becomes its own object), so a
  *   bytes payload claiming this kind means the descriptor routed it wrong and
@@ -147,7 +147,12 @@ async function loadByteFile(studio: StudioLike, payload: BioViewerPayload): Prom
     return;
   }
 
-  await studio.loadStructure({ data: TEXT_DECODER.decode(bytes), label: title, format: format.molstarFormat });
+  await studio.loadStructure({ data: structureData(payload), label: title, format: format.molstarFormat });
+}
+
+/** Text CIF/PDB/SDF as a string; Binary CIF as the original bytes. */
+function structureData(payload: BioViewerPayload): string | Uint8Array {
+  return isBinaryCifFile(payload.path) ? payload.bytes : TEXT_DECODER.decode(payload.bytes);
 }
 
 /** The `kind: "structure"` route: hand the accession to MolStudio's own loader. */

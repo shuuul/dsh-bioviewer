@@ -236,6 +236,30 @@ describe("loadIntoStudio routing", () => {
     expect(studio.calls[0]?.data).toBe("data_1abc\n#\n");
   });
 
+  test("loads Binary CIF as raw bytes through the mmCIF reader", async () => {
+    const studio = new FakeStudio();
+    const bytes = new Uint8Array([0x00, 0x00, 0x01, 0x00, 0xff, 0xfe, 0x80, 0x7f]);
+
+    await loadIntoStudio(studio, bytesPayload("1abc.bcif", bytes, "1abc"));
+
+    expect(studio.calls).toHaveLength(1);
+    const [call] = studio.calls;
+    expect(call?.method).toBe("loadStructure");
+    expect(call?.format).toBe("mmcif");
+    expect(call?.data).toBe(bytes);
+  });
+
+  test("loads a gunzipped Binary CIF as raw bytes too", async () => {
+    const studio = new FakeStudio();
+    const bytes = new Uint8Array([0x83, 0x00, 0x01]);
+
+    await loadIntoStudio(studio, bytesPayload("1abc.bcif.gz", bytes, "1abc.bcif"));
+
+    expect(studio.calls[0]?.method).toBe("loadStructure");
+    expect(studio.calls[0]?.format).toBe("mmcif");
+    expect(studio.calls[0]?.data).toBe(bytes);
+  });
+
   test("loads a small molecule (SDF) through loadStructure as text", async () => {
     const studio = new FakeStudio();
 
