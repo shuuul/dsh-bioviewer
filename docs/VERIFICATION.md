@@ -4,10 +4,11 @@ Adversarial verification of the C1–C6 claims in `task-4`. Every verdict below 
 backed by a command that was actually run and the output it produced; nothing
 here is a summary of intent.
 
-This is **revision 2** of the report. The tree moved after the first PASS run
-(`markers.tsx` split, style-element id fixed, three test files added), so every
-claim was re-established against the new revision. §3 records exactly what
-changed and which claims that could plausibly have broken.
+This is **revision 3** of the report. The tree moved twice after the first PASS
+run: revision 2 (`markers.tsx` split, style-element id fixed, three test files
+added) was re-established in full, and revision 3 is a docs-only delta whose
+analysis is in §3b. §3 records exactly what changed in revision 2 and which
+claims that could plausibly have broken.
 
 **Verified revision** — plugin files (`src/**`, `scripts/**`, `package.json`,
 `tsconfig*.json`, `cordis.patch.yml`) hashed as a tree:
@@ -15,11 +16,15 @@ changed and which claims that could plausibly have broken.
 ```
 $ find src scripts package.json tsconfig.json tsconfig.build.json cordis.patch.yml -type f \
     | sort | xargs shasum -a 256 | shasum -a 256
-53e17bb685d07e8dbcfd7a68302fff5a20e79e14edfd2c146caa0f878020d250  -
+143c722fa1edd6e895d526bfc86a6412fa315a0c96bf87cfd54fa4546eb20992  -
 ```
 
-Git revision `f7dd63e7cc6aedeb1dffbeff6bde08ccac3f1918` (initial commit; all
-plugin work is still untracked in the working tree).
+The hash moved from revision 2's `53e17bb6…` because `package.json` gained
+`"README_EN.md"` in its `files` array (verified with `git diff HEAD~1 --
+package.json`: that is the only change). No file under `src/**`, `scripts/**` or
+the build configs moved, which is why the artifacts below are byte-identical.
+
+Git revision `5a3c194` (the README change is its own commit on top of `1ec961b`).
 
 **Built artifacts**
 
@@ -28,9 +33,10 @@ plugin work is still untracked in the working tree).
 | `lib/index.js` | 180 B | `c8bb96433be102a636d005cbcc7660d96bf19ee083803424b066d8b2f8a0e13d` | **unchanged** |
 | `lib/client.js` | 3 346 927 B | `81a94165ebe0d5dd605b4eabbd717e9077cc8d3bff593a4ad7ec71bb6ed74689` | was `f2ebe6c0…`, 3 347 049 B |
 
-Both hashes match the values the lead reported for this revision — reproduced
-here by a clean `rm -rf lib && bun run build`, not taken on trust. The build is
-deterministic: repeated clean builds reproduce both hashes byte for byte.
+Both hashes match the values the lead reported — reproduced here by a clean
+`rm -rf lib && bun run build` in **both** revision 2 and revision 3, not taken on
+trust. The build is deterministic: repeated clean builds reproduce both hashes
+byte for byte, which is what makes the §3b inertness argument sound.
 
 **Environment** — bun 1.4.4 (macOS arm64), `dsh` 0.2.1-rc.2, `dsh-better-sidebar`
 0.28.2 (installed), `@deepseek-ai/cordis` 4.0.5, `react`/`react-dom` 18.3.1,
@@ -55,8 +61,8 @@ Acceptance command (the one required by `task-4`):
 $ bun test tests/registration.test.ts tests/contract.test.ts tests/build.test.ts
  44 pass
  0 fail
- 219 expect() calls
-Ran 44 tests across 3 files. [1147.00ms]
+ 220 expect() calls
+Ran 44 tests across 3 files. [1363.00ms]
 $ echo $?
 0
 ```
@@ -66,18 +72,22 @@ Whole-repository gate (lint → typecheck → build → test):
 ```
 $ bun run verify:fast
 ...
- 143 pass
+ 149 pass
  0 fail
- 1027 expect() calls
-Ran 143 tests across 11 files. [1255.00ms]
+ 1043 expect() calls
+Ran 149 tests across 12 files. [1223.00ms]
 $ echo $?
 0
 ```
 
+(The lead's run of the same gate reports 1042 expect() calls; the difference is
+exactly the one assertion added to `tests/build.test.ts` in §3b — the `files`
+existence check. Same 149 tests, same 0 failures.)
+
 ```
-$ bunx oxlint --format=github
+$ bunx oxlint
 Found 0 warnings and 0 errors.
-Finished in 8ms on 28 files with 116 rules using 12 threads.
+Finished in 8ms on 30 files with 116 rules using 12 threads.
 ```
 
 ---
@@ -125,6 +135,53 @@ Confirmed independently rather than accepted: the plugin-file hash `53e17bb6…`
 was identical before and after the test-only additions, `lib/index.js` is
 byte-identical to revision 1, and the new `lib/client.js` reproduces exactly the
 hash the lead reported.
+
+---
+
+## 3b. Revision 3 delta — README pair (assessed inert, and confirmed)
+
+What changed: `README.md` became the Chinese primary with the English text moved
+verbatim to the new `README_EN.md` (they cross-link); `package.json` `files`
+gained `"README_EN.md"`; `tests/readme.test.ts` (6 tests) pins the pair;
+`AGENTS.md` records the convention.
+
+**Assessment: no claim is affected, and that is provable rather than argued.**
+Nothing under `src/**`, `scripts/**`, `tsconfig*` or `cordis.patch.yml` moved, so
+the build inputs are identical; the build is deterministic (independently
+confirmed in §3); and a clean `rm -rf lib && bun run build` reproduces both
+artifact hashes exactly:
+
+```
+$ rm -rf lib && bun run build && shasum -a 256 lib/index.js lib/client.js
+c8bb96433be102a636d005cbcc7660d96bf19ee083803424b066d8b2f8a0e13d  lib/index.js
+81a94165ebe0d5dd605b4eabbd717e9077cc8d3bff593a4ad7ec71bb6ed74689  lib/client.js
+```
+
+Byte-identical artifacts mean C1/C2/C3 (artifact identity, boot handoff, bundle
+purity) and C4/C5/C6 (registration graph, graceful degradation, contract
+conformance) cannot have changed. So this delta was **not** re-run through the
+full matrix; only the following was executed:
+
+* the acceptance command — still 44 pass / 0 fail (§1);
+* `bun run verify:fast` — 149 pass / 0 fail (§1);
+* one addition to `tests/build.test.ts`, because the delta did touch
+  `package.json`: the `files` array is the npm publish allowlist, and a non-glob
+  entry naming a file that does not exist ships a broken package while npm only
+  warns. The test now asserts every non-glob `files` entry exists:
+
+  ```
+  [C1] package.json files entries checked: lib, src, cordis.patch.yml, icon.svg,
+       README.md, README_EN.md, LICENSE
+  ```
+
+  (`locale/*.json` is a glob and is exercised by `tests/manifest.test.ts`
+  instead.) This is the only change to a file in this task's write scope for the
+  revision-3 delta.
+
+One correction worth recording: the verified-revision hash *does* move in this
+delta — `53e17bb6…` → `143c722f…` — because `package.json` is part of the hashed
+plugin file set. `git diff HEAD~1 -- package.json` shows the `files` entry is the
+only change, which is why the artifacts stay identical.
 
 ---
 
@@ -378,6 +435,43 @@ Reviewed and executed; it asserts the loader-facing surface (`main`,
 row being enabled and correctly named, better-sidebar being an optional peer, and
 no unscoped `cordis` in any dependency group). These were separately confirmed
 end-to-end by the real host in §6, which is the stronger evidence.
+
+### `tests/readme.test.ts` — PASS, and falsified by mutation
+
+The README pair only earns its keep if the guards can fail, so six mutations were
+applied **in a throwaway copy of the repository** (`/tmp/mut2`, since deleted;
+`README*.md` and `package.json` are outside this task's write scope). The real
+tree was never modified — `git diff HEAD -- README.md README_EN.md package.json`
+was empty afterwards and the plugin-file hash was unchanged.
+
+Baseline: 6 pass / 0 fail / 15 expect() calls.
+
+| Mutation | Observed |
+| --- | --- |
+| delete one `##` section from `README_EN.md` (a section that mentions no format literal, so only parity can catch it) | `(fail) …both keep the same number of level-2 sections` — `Expected: 7, Received: 6`, and nothing else failed |
+| remove **all** backticked `` `xyz` `` from `README_EN.md` | `(fail) …both document every supported extension` **and** `(fail) …both document every Mol* reader the table declares` — exactly the two the lead predicted |
+| remove the backticked `` `cifCore` `` from `README.md` | no failure — **because `cifCore` is not in the table at all** (see below); the mutation was mine to fix, not the test's |
+| break the cross-link (`(README.md)` → `(README.md.bak)`) | `(fail) …both files are substantial and link to each other` |
+| remove `"README_EN.md"` from `package.json#files` | `(fail) …both are shipped in the published package` |
+| empty the reader set in the test copy (vacuity guard) | `(fail) …both document every Mol* reader the table declares` — `Expected: >= 5, Received: 0` |
+
+Two notes from doing this honestly:
+
+* My first attempt at the `` `xyz` `` mutation replaced only the **first**
+  occurrence, and the test still passed — correctly, because a second occurrence
+  remained. A mutation that does not land proves nothing; the second attempt
+  removed every occurrence and the assertions bit. The same mistake in the
+  vacuity-guard mutation (a `str.replace` whose pattern did not match) silently
+  no-op'd until I asserted the replacement had landed.
+* The reader set the test checks is
+  `pdb, mmcif, ccp4, sdf, mol, mol2, pdbqt, gro, xyz` (9 ids); `cifCore` is **not**
+  in the table, because this plugin maps `cif` to the `mmcif` reader. Worth
+  knowing: every one of those 9 ids is also an extension today, so the
+  "documents every Mol\* reader" assertion is currently implied by the
+  "documents every extension" assertion. It has forward value rather than present
+  value — it starts doing independent work the moment a format maps an extension
+  to a reader id that is not itself an extension (e.g. `cif` → `cifCore`, or
+  `lammps` → `lammps_data`).
 
 ### `tests/molstar-formats.test.ts` — PASS, non-vacuity falsified by mutation
 

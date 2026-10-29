@@ -137,6 +137,7 @@ describe("C1 build output", () => {
     const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
       main?: string;
       icon?: string;
+      files?: string[];
       exports?: Record<string, string | Record<string, string>>;
       dsh?: { bundle?: { patch?: string } };
     };
@@ -150,6 +151,13 @@ describe("C1 build output", () => {
     const missing = targets.filter((t) => t !== "" && !t.includes("*") && !existsSync(join(root, t)));
     console.log(`[C1] package.json targets checked: ${targets.filter((t) => t !== "" && !t.includes("*")).join(", ")}`);
     expect(missing).toEqual([]);
+    // `files` is the npm publish allowlist: a non-glob entry naming a file that
+    // does not exist ships a broken package (npm only warns). Globs are skipped
+    // here — `locale/*.json` is exercised by the manifest test instead.
+    const filesList = (pkg.files ?? []).filter((entry) => !entry.includes("*"));
+    const missingFiles = filesList.filter((entry) => !existsSync(join(root, entry)));
+    console.log(`[C1] package.json files entries checked: ${filesList.join(", ")}`);
+    expect(missingFiles).toEqual([]);
     // The declaration emit is part of `bun run build`; a silently empty one
     // would still satisfy existsSync, so check it has content.
     expect(statSync(join(root, "lib/types/client/index.d.ts")).size).toBeGreaterThan(0);
