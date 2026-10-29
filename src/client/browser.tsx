@@ -31,6 +31,7 @@ import {
   type ReactNode,
 } from "react";
 import css from "./browser.css";
+import { useViewerLocale } from "./use-locale";
 import {
   collectBioFiles,
   fetchSessionCwd,
@@ -72,9 +73,6 @@ type SettledState =
 type LoadState = { status: "loading" } | SettledState;
 
 const STYLE_ELEMENT_ID = "dsh-bioviewer-styles";
-
-const SERVICE_UNAVAILABLE =
-  "The better-sidebar service is unavailable, so the workspace cannot be listed.";
 
 /** Inject the stylesheet once per document (idempotent across mounts/HMR). */
 let stylesInjected = false;
@@ -244,6 +242,7 @@ function RefreshGlyph(): ReactNode {
  */
 export function BioBrowser(props: BioBrowserProps): ReactNode {
   const { ctx, scope, visible } = props;
+  const { t } = useViewerLocale();
   const sessionId = scope.sessionId;
   const cwd = normalizeDir(scope.cwd);
 
@@ -375,7 +374,7 @@ export function BioBrowser(props: BioBrowserProps): ReactNode {
 
   // Derived view state: never blank, never stale for the wrong directory.
   const state: LoadState = !available
-    ? { status: "error", message: SERVICE_UNAVAILABLE }
+    ? { status: "error", message: t("browser.unavailable") }
     : rootError !== null
       ? { status: "error", message: rootError }
       : loaded !== null && dir !== undefined && loaded.dir === dir
@@ -419,7 +418,7 @@ export function BioBrowser(props: BioBrowserProps): ReactNode {
   if (state.status === "loading") {
     body = (
       <p className="dsh-bioviewer__status" role="status">
-        Loading…
+        {t("browser.loading")}
       </p>
     );
   } else if (state.status === "error") {
@@ -431,7 +430,7 @@ export function BioBrowser(props: BioBrowserProps): ReactNode {
           className="dsh-bioviewer__action"
           onClick={refresh}
         >
-          Try again
+          {t("browser.retry")}
         </button>
       </div>
     );
@@ -439,7 +438,7 @@ export function BioBrowser(props: BioBrowserProps): ReactNode {
     body = (
       <>
         {dirs.length > 0 && (
-          <ul className="dsh-bioviewer__list" aria-label="Folders">
+          <ul className="dsh-bioviewer__list" aria-label={t("browser.folders")}>
             {dirs.map((entry) => (
               <li key={entry.path}>
                 <button
@@ -460,21 +459,21 @@ export function BioBrowser(props: BioBrowserProps): ReactNode {
         )}
         {files.length === 0 ? (
           <div className="dsh-bioviewer__status" role="status">
-            <p className="dsh-bioviewer__message">No bio files here</p>
+            <p className="dsh-bioviewer__message">{t("browser.empty")}</p>
             {dirs.length > 0 && (
               <p className="dsh-bioviewer__hint">
-                Open a folder above to keep looking.
+                {t("browser.emptyHint")}
               </p>
             )}
           </div>
         ) : (
-          <ul className="dsh-bioviewer__list" aria-label="Bio files">
+          <ul className="dsh-bioviewer__list" aria-label={t("browser.files")}>
             {files.map((entry) => (
               <li key={entry.path}>
                 <button
                   type="button"
                   className="dsh-bioviewer__row"
-                  title={`Open ${entry.path}`}
+                  title={t("browser.openFile", { path: entry.path })}
                   onClick={() => openEntry(entry)}
                 >
                   <FileGlyph />
@@ -489,7 +488,7 @@ export function BioBrowser(props: BioBrowserProps): ReactNode {
         )}
         {state.truncated && (
           <p className="dsh-bioviewer__notice" role="status">
-            The host capped this listing — some entries are hidden.
+            {t("browser.capped")}
           </p>
         )}
       </>
@@ -504,20 +503,20 @@ export function BioBrowser(props: BioBrowserProps): ReactNode {
           className="dsh-bioviewer__icon-button"
           onClick={goUp}
           disabled={parent === undefined}
-          title="Go to the parent folder"
-          aria-label="Go to the parent folder"
+          title={t("browser.parent")}
+          aria-label={t("browser.parent")}
         >
           <UpGlyph />
         </button>
-        <span className="dsh-bioviewer__cwd" title={dir ?? "Session root"}>
-          {dir ?? "Session root"}
+        <span className="dsh-bioviewer__cwd" title={dir ?? t("browser.sessionRoot")}>
+          {dir ?? t("browser.sessionRoot")}
         </span>
         <button
           type="button"
           className="dsh-bioviewer__icon-button"
           onClick={refresh}
-          title="Refresh the listing"
-          aria-label="Refresh the listing"
+          title={t("browser.refresh")}
+          aria-label={t("browser.refresh")}
         >
           <RefreshGlyph />
         </button>

@@ -15,6 +15,7 @@ import { createElement, useMemo, type ReactNode } from "react";
 import { parseOpenTarget, structureTitle } from "../shared/opens";
 import type { ViewerPayload } from "./payload";
 import { BioViewer } from "./studio";
+import { useViewerLocale } from "./use-locale";
 import { useViewerTheme } from "./use-theme";
 
 /** A plain, token-styled message panel — never a blank pane. */
@@ -40,11 +41,12 @@ export interface BioFileViewProps {
 
 export function BioFileView(props: BioFileViewProps): ReactNode {
   const theme = useViewerTheme();
+  const { t } = useViewerLocale();
   const { payload } = props;
   if (payload === undefined) {
     return createElement(BioNotice, {
-      title: "No data loaded",
-      body: `The viewer did not receive any bytes for ${props.path}.`,
+      title: t("notice.noData.title"),
+      body: t("notice.noData.body", { path: props.path }),
     });
   }
   return createElement(BioViewer, { payload, theme });
@@ -60,22 +62,19 @@ export function BioFileView(props: BioFileViewProps): ReactNode {
  */
 export function StructureTabView(props: { readonly path: string | undefined }): ReactNode {
   const theme = useViewerTheme();
+  const { t } = useViewerLocale();
   // A payload identity is a reload signal; a theme/parent render is not.
   const parsed = useMemo(() => {
-    const target = props.path === undefined
-      ? { kind: "invalid" as const, reason: "the tab has no address" }
-      : parseOpenTarget(props.path);
-    return target.kind === "structure"
-      ? { ...target, title: structureTitle(target.source, target.id) }
-      : target;
+    if (props.path === undefined) return { kind: "missing" as const };
+    const target = parseOpenTarget(props.path);
+    return target.kind === "structure" ? { ...target, title: structureTitle(target.source, target.id) } : target;
   }, [props.path]);
   if (parsed.kind !== "structure") {
+    const reason =
+      parsed.kind === "missing" ? t("notice.noAddress") : parsed.kind === "invalid" ? parsed.reason : undefined;
     return createElement(BioNotice, {
-      title: "Unknown structure",
-      body:
-        parsed.kind === "invalid"
-          ? `This tab does not name a database structure: ${parsed.reason}.`
-          : "This tab does not name a database structure.",
+      title: t("notice.unknown.title"),
+      body: reason === undefined ? t("notice.unknown.body") : t("notice.unknown.bodyReason", { reason }),
     });
   }
   return createElement(BioViewer, {

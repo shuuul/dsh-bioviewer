@@ -12,7 +12,7 @@ stack as the [BioViewer VS Code extension](https://github.com/shuuul/bioviewer).
 ## Features
 
 - PDB / mmCIF / Binary CIF, MRC maps, small molecules, and Chimera `.cmm` markers (can overlay a map)
-- `.gz` on every format; a "BioViewer" tab lists workspace files; follows the DSH theme
+- `.gz` on every format; a "BioViewer" tab lists workspace files; follows the DSH theme and language
 - Reloads **replace** the old object when the file is rewritten
 - The model can call `bio_open` for a file or a database entry (`pdb:1cbs`, `alphafold:P00533`, `emdb:EMD-1234`)
 
@@ -72,8 +72,7 @@ bun run verify:fast
 
 ## Limitations
 
-The workspace browser lists one directory level. Browser and loading copy are
-still English (MolStudio follows the DSH language).
+The workspace browser lists one directory level.
 
 ## License
 

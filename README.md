@@ -7,7 +7,7 @@
 ## 功能
 
 - PDB / mmCIF / Binary CIF、MRC 密度图、小分子，以及 Chimera `.cmm` 标记（可与密度图叠图）
-- 所有格式支持 `.gz`；「BioViewer」tab 浏览工作区；跟随 DSH 明暗主题
+- 所有格式支持 `.gz`；「BioViewer」tab 浏览工作区；跟随 DSH 明暗主题与界面语言
 - 文件被改写时**替换**重载，不叠加
 - 模型可用 `bio_open` 打开文件或数据库条目（`pdb:1cbs`、`alphafold:P00533`、`emdb:EMD-1234`）
 
@@ -61,7 +61,7 @@ bun run verify:fast
 
 ## 已知限制
 
-工作区浏览器只列一层；浏览器与加载提示仍是英文（MolStudio 跟随 DSH 语言）。
+工作区浏览器只列一层。
 
 ## 许可证
 

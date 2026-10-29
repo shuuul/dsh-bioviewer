@@ -33,9 +33,11 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { Studio } from "@molstudio/react";
 import type { MolStudio } from "@molstudio/core";
+import { formatLabel, type CopyKey, type CopyVars } from "./copy";
 import { CloseIcon, ErrorIcon, RetryIcon, SpinnerIcon } from "./icons";
 import { loadIntoStudio } from "./load";
 import type { StudioLike } from "./load";
+import type { StudioLocale } from "./locale";
 import type { MarkersPayload, StructurePayload, ViewerPayload } from "./payload";
 import { useViewerLocale } from "./use-locale";
 
@@ -69,7 +71,7 @@ interface LoadAttempt {
  * entry does not exist or the network is down.
  */
 export function BioViewer({ payload, theme }: BioViewerProps): ReactElement {
-  const { locale, onLocaleChange } = useViewerLocale();
+  const { locale, onLocaleChange, t } = useViewerLocale();
   const [studio, setStudio] = useState<StudioLike | null>(null);
   const [studioError, setStudioError] = useState<string | null>(null);
   /** The newest *settled* attempt; the visible status is derived from it. */
@@ -119,13 +121,21 @@ export function BioViewer({ payload, theme }: BioViewerProps): ReactElement {
 
   let overlay: ReactElement | null = null;
   if (studio === null) {
-    overlay = <StatusCard busy title="Starting the Mol* viewer…" detail="Creating the WebGL canvas." />;
+    overlay = <StatusCard busy title={t("start.title")} detail={t("start.detail")} />;
   } else if (status === "error" && error !== null) {
     overlay = (
-      <StatusCard tone="error" title={`Could not display ${payload.title}`} detail={error} onRetry={retry} />
+      <StatusCard
+        tone="error"
+        title={t("error.title", { title: payload.title })}
+        detail={error}
+        retryLabel={t("error.retry")}
+        onRetry={retry}
+      />
     );
   } else if (status === "loading") {
-    overlay = <StatusCard busy title={`Loading ${payload.title}…`} detail={loadingDetail(payload)} />;
+    overlay = (
+      <StatusCard busy title={t("load.title", { title: payload.title })} detail={loadingDetail(payload, t, locale)} />
+    );
   }
 
   return (
@@ -150,8 +160,8 @@ export function BioViewer({ payload, theme }: BioViewerProps): ReactElement {
             <button
               type="button"
               style={ICON_BUTTON_STYLE}
-              aria-label="Dismiss viewer error"
-              title="Dismiss viewer error"
+              aria-label={t("error.dismiss")}
+              title={t("error.dismiss")}
               onClick={() => setStudioError(null)}
             >
               <CloseIcon size={12} />
@@ -169,12 +179,14 @@ function StatusCard({
   detail,
   busy = false,
   tone = "info",
+  retryLabel,
   onRetry,
 }: {
   readonly title: string;
   readonly detail?: string;
   readonly busy?: boolean;
   readonly tone?: "info" | "error";
+  readonly retryLabel?: string;
   readonly onRetry?: () => void;
 }): ReactElement {
   return (
@@ -187,12 +199,14 @@ function StatusCard({
       {onRetry !== undefined && (
         <button type="button" style={BUTTON_STYLE} onClick={onRetry}>
           <RetryIcon size={13} />
-          <span>Retry</span>
+          <span>{retryLabel}</span>
         </button>
       )}
     </div>
   );
 }
+
+type Translate = (key: CopyKey, vars?: CopyVars) => string;
 
 /**
  * What the loading card says under the title.
@@ -202,38 +216,34 @@ function StatusCard({
  * leave the user unable to tell which accession is in flight. A marker model is
  * local but can be large, so it reports what is about to be drawn.
  */
-function loadingDetail(payload: ViewerPayload): string {
+function loadingDetail(payload: ViewerPayload, translate: Translate, locale: StudioLocale): string {
   switch (payload.kind) {
     case "bytes":
-      return payload.format.label;
+      return formatLabel(locale, payload.format.id, payload.format.label);
     case "structure":
-      return structureLoadingDetail(payload);
+      return structureLoadingDetail(payload, translate);
     case "markers":
-      return markersLoadingDetail(payload);
+      return markersLoadingDetail(payload, translate);
   }
 }
 
-function structureLoadingDetail(payload: StructurePayload): string {
+function structureLoadingDetail(payload: StructurePayload, translate: Translate): string {
   const { id } = payload;
   switch (payload.source) {
     case "pdb":
-      return `Downloading ${id} from the PDB archive.`;
+      return translate("load.pdb", { id });
     case "alphafold":
-      return `Downloading prediction ${id} from AlphaFold DB.`;
+      return translate("load.alphafold", { id });
     case "emdb":
-      return `Downloading map ${id} from EMDB (author-recommended contour).`;
+      return translate("load.emdb", { id });
   }
 }
 
-/** Totals across every set in the file: `Drawing 12 markers and 3 links.` */
-function markersLoadingDetail(payload: MarkersPayload): string {
+/** Totals across every set in the file. */
+function markersLoadingDetail(payload: MarkersPayload, translate: Translate): string {
   const markers = payload.sets.reduce((total, set) => total + set.markers.length, 0);
   const links = payload.sets.reduce((total, set) => total + set.links.length, 0);
-  return `Drawing ${counted(markers, "marker")} and ${counted(links, "link")}.`;
-}
-
-function counted(value: number, noun: string): string {
-  return `${value} ${noun}${value === 1 ? "" : "s"}`;
+  return translate("load.markers", { markers, links });
 }
 
 /** Error text for anything a promise can reject with. */

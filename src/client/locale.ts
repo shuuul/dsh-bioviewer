@@ -75,6 +75,11 @@ export function readLocaleOverride(storage: Pick<Storage, "getItem"> | undefined
   }
 }
 
+/** The catalog the viewer chrome should use right now (override, else host). */
+export function activeLocale(): StudioLocale {
+  return catalogLocale(readLocaleOverride() ?? hostLanguage());
+}
+
 /** Persist a catalog id chosen in the language menu. */
 export function writeLocaleOverride(
   locale: StudioLocale,

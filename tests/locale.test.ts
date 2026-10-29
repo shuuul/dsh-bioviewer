@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  activeLocale,
   catalogLocale,
   hostLanguage,
   LOCALE_STORAGE_KEY,
@@ -31,6 +32,12 @@ describe("hostLanguage", () => {
     expect(hostLanguage({ documentElement: { lang: "  " } } as Document, { language: "ja" })).toBe("ja");
     expect(hostLanguage({ documentElement: { lang: "" } } as Document, { language: "" })).toBe("en");
     expect(hostLanguage(undefined, undefined)).toBe("en");
+  });
+});
+
+describe("activeLocale", () => {
+  test("is a catalog id derived from override then host", () => {
+    expect(activeLocale() === "en" || activeLocale() === "zh-CN").toBe(true);
   });
 });
 

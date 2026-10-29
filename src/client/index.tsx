@@ -35,8 +35,10 @@ import { startAgentOpens, STRUCTURE_TAB_ID } from "./agent-opens";
 import { fetchBioBytes } from "./bytes";
 import { BioBrowser } from "./browser";
 import { parseCmmMarkerSets } from "./cmm";
+import { formatLabel, t } from "./copy";
 import { BioFileView, StructureTabView } from "./file-view";
 import { BioViewerIcon } from "./icons";
+import { activeLocale } from "./locale";
 import type { BioViewerPayload, MarkersPayload, ViewerPayload } from "./payload";
 
 /**
@@ -192,7 +194,7 @@ function registerAll(ctx: Context): void {
       () =>
         ctx.betterSidebar.registerFileViewer({
           id: `${ID_PREFIX}:${format.id}`,
-          title: () => format.label,
+          title: () => formatLabel(activeLocale(), format.id, format.label),
           icon: (size: number) => createElement(BioViewerIcon, { size }),
           exts: format.exts,
           fetchStrategy: "custom",
@@ -217,7 +219,7 @@ function registerAll(ctx: Context): void {
     () =>
       ctx.betterSidebar.registerFileViewer({
         id: GZIP_VIEWER_ID,
-        title: () => "Compressed bio file",
+        title: () => t(activeLocale(), "tab.gzip"),
         icon: (size: number) => createElement(BioViewerIcon, { size }),
         exts: [],
         priority: GZIP_VIEWER_PRIORITY,
@@ -243,8 +245,8 @@ function registerAll(ctx: Context): void {
     () =>
       ctx.betterSidebar.registerTab({
         id: TAB_ID,
-        title: () => "BioViewer",
-        description: () => "Structures, density maps and ligands in this workspace",
+        title: () => t(activeLocale(), "tab.browser"),
+        description: () => t(activeLocale(), "tab.browserDescription"),
         icon: (size: number) => createElement(BioViewerIcon, { size }),
         order: 45,
         single: true,
@@ -262,7 +264,7 @@ function registerAll(ctx: Context): void {
     () =>
       ctx.betterSidebar.registerTab({
         id: STRUCTURE_TAB_ID,
-        title: () => "Structure",
+        title: () => t(activeLocale(), "tab.structure"),
         icon: (size: number) => createElement(BioViewerIcon, { size }),
         hidden: true,
         createTab: () => {
@@ -271,7 +273,7 @@ function registerAll(ctx: Context): void {
             tab: {
               id: `${STRUCTURE_TAB_ID}:${structureTabSeq}`,
               type: STRUCTURE_TAB_ID,
-              title: "Structure",
+              title: t(activeLocale(), "tab.structure"),
             },
           };
         },
