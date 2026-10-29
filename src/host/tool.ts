@@ -1,17 +1,22 @@
 /**
- * The model-facing `bio_open` tool.
+ * The model-facing `bio_open` and `bio_add` tools.
  *
- * This is the host half of agent-triggered opening: the model calls the tool,
+ * This is the host half of agent-triggered viewing: the model calls a tool,
  * the host queues a request for the CALLING session's sidebar, and the sidebar
  * long-polls it back (`./route.ts` + `./registry.ts`).
  *
- * It deliberately coexists with better-sidebar's own `sidebar_open` and is not
- * a replacement for it: `sidebar_open` opens anything the editor can render,
- * while this one is bio-aware — it validates the extension against our format
- * table, accepts `pdb:` / `alphafold:` / `emdb:` accessions that have no local
- * path at all, and refuses an unsupported file with the list of supported
- * formats instead of opening it as text. The description says so, because the
- * model picks between the two from the description alone.
+ * `bio_open` always makes a new tab. `bio_add` stacks into the live BioViewer
+ * (a density map over a structure, markers over a map, a second PDB). Both
+ * share the same queue and the same target grammar; the client decides whether
+ * an add has a studio to land in.
+ *
+ * They deliberately coexist with better-sidebar's own `sidebar_open` and are
+ * not a replacement for it: `sidebar_open` opens anything the editor can
+ * render, while these are bio-aware — they validate the extension against our
+ * format table, accept `pdb:` / `alphafold:` / `emdb:` accessions that have no
+ * local path at all, and refuse an unsupported file with the list of supported
+ * formats instead of opening it as text. The descriptions say so, because the
+ * model picks between the tools from the description alone.
  *
  * The shape follows better-sidebar's `registerOpenTool`
  * (`node_modules/dsh-better-sidebar/src/agent-opens.ts:209-276`): the session
@@ -30,12 +35,14 @@ import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 // a host package (present in any deployment that can run this plugin), and the
 // import is erased at build time — the plugin never value-imports it.
 import type {} from "@deepseek-ai/dsh-working-directory";
-import { supportedExtensionsText } from "../shared/opens";
+import { supportedExtensionsText, type OpenMode } from "../shared/opens";
 import type { OpenRegistry } from "./registry";
 import { resolveOpen } from "./target";
 
-/** The tool name the model sees. */
+/** The tool name the model sees for a new tab. */
 export const BIO_OPEN_TOOL = "bio_open";
+/** The tool name the model sees for stacking into the live viewer. */
+export const BIO_ADD_TOOL = "bio_add";
 
 /** The tool's parameters (mirrors `parameters` below). */
 interface BioOpenArgs {
@@ -43,7 +50,7 @@ interface BioOpenArgs {
   readonly title?: string;
 }
 
-/** The canonical value `bio_open` returns (mirrors `output.schema` below). */
+/** The canonical value both tools return (mirrors `output.schema` below). */
 interface BioOpenResult {
   readonly kind: "file" | "structure";
   readonly target: string;
@@ -51,10 +58,16 @@ interface BioOpenResult {
   readonly delivered: boolean;
 }
 
+const SUPPORTED =
+  `Supported extensions: ${supportedExtensionsText()} (each is also accepted with a .gz suffix). `;
+
+const TARGET_DESCRIPTION =
+  "a file path (absolute or relative to the session working directory), or a database structure as `pdb:1cbs`, `alphafold:P00533` or `emdb:EMD-1234`";
+
 /** Extract the calling agent or throw the canonical "no agent" error. */
-function requireAgent(agent: ToolRunContext["agent"]): NonNullable<ToolRunContext["agent"]> {
+function requireAgent(agent: ToolRunContext["agent"], tool: string): NonNullable<ToolRunContext["agent"]> {
   if (agent === undefined) {
-    throw new Error(`${BIO_OPEN_TOOL} requires an initiating agent`);
+    throw new Error(`${tool} requires an initiating agent`);
   }
   return agent;
 }
@@ -82,85 +95,127 @@ function textRender<T>(fn: (value: T) => string): (_args: unknown, value: unknow
   return (_args, value) => [{ type: "text", text: fn(value as T) }];
 }
 
+const OUTPUT_SCHEMA = {
+  type: "object" as const,
+  additionalProperties: false as const,
+  properties: {
+    kind: { type: "string" as const, required: true as const, description: "What was opened: file | structure." },
+    target: {
+      type: "string" as const,
+      required: true as const,
+      description: "The absolute path, or the normalised source:id of the database entry.",
+    },
+    title: { type: "string" as const, required: true as const, description: "The tab or object title used." },
+    delivered: {
+      type: "boolean" as const,
+      required: true as const,
+      description:
+        "Whether the request reached a connected sidebar at call time (false = queued until that session's sidebar is next shown).",
+    },
+  },
+};
+
+const PARAMETERS = {
+  target: {
+    type: "string" as const,
+    required: true as const,
+    description: TARGET_DESCRIPTION,
+  },
+  title: {
+    type: "string" as const,
+    description:
+      "Optional title (defaults to the file name, or the database and id for a structure entry).",
+  },
+};
+
+function executeViewerTool(
+  ctx: Context,
+  registry: OpenRegistry,
+  mode: OpenMode,
+  tool: string,
+): (args: BioOpenArgs, exec: ToolRunContext) => Promise<BioOpenResult> {
+  return async (args, exec) => {
+    // Cancellation is checked before the work and again before the handover:
+    // an aborted call must not leave a request queued for a turn that is gone.
+    exec.signal.throwIfAborted();
+    const session = requireAgent(exec.agent, tool).session;
+    const resolved = resolveOpen(args.target, args.title, sessionCwdOf(ctx, session), mode);
+    exec.signal.throwIfAborted();
+    const { delivered } = registry.enqueue(session.id, resolved.request);
+    return { kind: resolved.kind, target: resolved.target, title: resolved.title, delivered };
+  };
+}
+
 /**
- * Register `bio_open` against the host tool registry.
+ * Register `bio_open` and `bio_add` against the host tool registry.
  *
  * A host without a tool registry (a stripped-down composition) is logged and
  * skipped rather than thrown at: this plugin's main job is the sidebar UI, and
- * losing the agent-triggered open must not take the whole plugin down.
+ * losing the agent-triggered tools must not take the whole plugin down.
  *
  * @param ctx - host plugin context (carries `tools` and `workingDirectory`).
- * @param registry - the open-request registry the tool queues into.
- * @returns a disposer that unregisters the tool.
+ * @param registry - the open-request registry the tools queue into.
+ * @returns a disposer that unregisters both tools.
  */
-export function registerBioOpenTool(ctx: Context, registry: OpenRegistry): () => void {
+export function registerViewerTools(ctx: Context, registry: OpenRegistry): () => void {
   const tools = ctx.get("tools");
   if (tools === undefined) {
     ctx.logger.warn(
-      `[dsh-bioviewer] no tool registry on this host; the ${BIO_OPEN_TOOL} tool is not registered`,
+      `[dsh-bioviewer] no tool registry on this host; the ${BIO_OPEN_TOOL} and ${BIO_ADD_TOOL} tools are not registered`,
     );
     return () => {};
   }
 
-  return tools.register(defineTool({
+  const disposeOpen = tools.register(defineTool({
     name: BIO_OPEN_TOOL,
     description:
-      "Open a biomolecular file or a database structure in the sidebar's BioViewer. "
+      "Open a biomolecular file or a database structure in a new BioViewer tab. "
       + "Use this instead of sidebar_open for structures and molecules: the extension is validated against the supported biomolecular formats "
       + "(an unsupported file is refused with an actionable error rather than opened in the text editor), and a database entry is addressed directly "
       + "as `pdb:1cbs`, `alphafold:P00533` or `emdb:EMD-1234` with no local file involved. "
-      + `Supported extensions: ${supportedExtensionsText()} (each is also accepted with a .gz suffix). `
+      + "Use bio_add to stack another object into a viewer that is already open (overlay a map, add markers, load a second structure). "
+      + SUPPORTED
       + "The path may be absolute or relative to the session working directory. "
       + "The open lands in the CALLING session's sidebar: while that session's sidebar view is not connected, "
       + "the open is queued and delivered when the session sidebar is next shown — the result reports `delivered` so you know whether it is visible right now.",
-    parameters: {
-      target: {
-        type: "string",
-        required: true,
-        description:
-          "a file path (absolute or relative to the session working directory), or a database structure as `pdb:1cbs`, `alphafold:P00533` or `emdb:EMD-1234`",
-      },
-      title: {
-        type: "string",
-        description:
-          "Optional tab title (defaults to the file name, or the database and id for a structure entry).",
-      },
-    },
+    parameters: PARAMETERS,
     output: {
-      schema: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          kind: { type: "string", required: true, description: "What was opened: file | structure." },
-          target: {
-            type: "string",
-            required: true,
-            description: "The absolute path, or the normalised source:id of the database entry.",
-          },
-          title: { type: "string", required: true, description: "The tab title used." },
-          delivered: {
-            type: "boolean",
-            required: true,
-            description:
-              "Whether the open reached a connected sidebar at call time (false = queued until that session's sidebar is next shown).",
-          },
-        },
-      },
+      schema: OUTPUT_SCHEMA,
       render: textRender((v: BioOpenResult) =>
         v.delivered
           ? `Opened ${v.kind} "${v.title}" (${v.target}) in the BioViewer sidebar.`
           : `Requested opening ${v.kind} "${v.title}" (${v.target}) in the BioViewer sidebar — the session sidebar is not connected yet, so the open is queued and will appear when it is next shown.`,
       ),
     },
-    execute: async (args: BioOpenArgs, exec: ToolRunContext): Promise<BioOpenResult> => {
-      // Cancellation is checked before the work and again before the handover:
-      // an aborted call must not leave an open queued for a turn that is gone.
-      exec.signal.throwIfAborted();
-      const session = requireAgent(exec.agent).session;
-      const resolved = resolveOpen(args.target, args.title, sessionCwdOf(ctx, session));
-      exec.signal.throwIfAborted();
-      const { delivered } = registry.enqueue(session.id, resolved.request);
-      return { kind: resolved.kind, target: resolved.target, title: resolved.title, delivered };
-    },
+    execute: executeViewerTool(ctx, registry, "open", BIO_OPEN_TOOL),
   }));
+
+  const disposeAdd = tools.register(defineTool({
+    name: BIO_ADD_TOOL,
+    description:
+      "Add a biomolecular file or a database entry to the BioViewer already on screen, stacking it as another Mol* object in the same canvas. "
+      + "Use this to overlay a density map on a structure, draw Chimera markers over a map, or load a second PDB next to the first. "
+      + "If no BioViewer is open in this session, one is created first (same as bio_open). "
+      + "Use bio_open instead when you want a separate tab. "
+      + "A database entry is addressed as `pdb:1cbs`, `alphafold:P00533` or `emdb:EMD-1234`. "
+      + SUPPORTED
+      + "The path may be absolute or relative to the session working directory. "
+      + "The add lands in the CALLING session's sidebar: while that session's sidebar view is not connected, "
+      + "the add is queued and delivered when the session sidebar is next shown — the result reports `delivered` so you know whether it reached a client right now.",
+    parameters: PARAMETERS,
+    output: {
+      schema: OUTPUT_SCHEMA,
+      render: textRender((v: BioOpenResult) =>
+        v.delivered
+          ? `Added ${v.kind} "${v.title}" (${v.target}) to the BioViewer.`
+          : `Requested adding ${v.kind} "${v.title}" (${v.target}) to the BioViewer — the session sidebar is not connected yet, so the add is queued and will appear when it is next shown.`,
+      ),
+    },
+    execute: executeViewerTool(ctx, registry, "add", BIO_ADD_TOOL),
+  }));
+
+  return () => {
+    disposeAdd();
+    disposeOpen();
+  };
 }

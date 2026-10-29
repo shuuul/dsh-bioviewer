@@ -140,9 +140,10 @@ async function loadBioPayload(
   scope: { sessionId: string; cwd?: string },
   signal?: AbortSignal,
 ): Promise<BioViewerPayload> {
-  const format = detectBioFile(path)?.format ?? fallback;
+  const detected = detectBioFile(path);
+  const format = detected?.format ?? fallback;
   const { bytes, gzip } = await readBytes(ctx, path, scope, signal);
-  return { kind: "bytes", path, title: baseName(path), format, bytes, gzip };
+  return { kind: "bytes", path, title: detected?.baseName ?? baseName(path), format, bytes, gzip };
 }
 
 /**
@@ -161,7 +162,7 @@ async function loadMarkerPayload(
   signal?: AbortSignal,
 ): Promise<MarkersPayload> {
   const { bytes, gzip } = await readBytes(ctx, path, scope, signal);
-  const title = baseName(path);
+  const title = detectBioFile(path)?.baseName ?? baseName(path);
   return {
     kind: "markers",
     path,
@@ -204,8 +205,12 @@ function registerAll(ctx: Context): void {
               : loadBioPayload(ctx, format, path, scope, signal),
           // Every payload variant carries a `kind`, so one component serves all
           // of them and `BioViewer` narrows the union.
-          component: ({ customData, path }) =>
-            createElement(BioFileView, { payload: customData as ViewerPayload | undefined, path }),
+          component: ({ customData, path, scope }) =>
+            createElement(BioFileView, {
+              payload: customData as ViewerPayload | undefined,
+              path,
+              sessionId: scope.sessionId,
+            }),
         }),
       `dsh-bioviewer: ${format.id} viewer`,
     );
@@ -235,8 +240,12 @@ function registerAll(ctx: Context): void {
             ? loadMarkerPayload(ctx, path, scope, signal)
             : loadBioPayload(ctx, format, path, scope, signal);
         },
-        component: ({ customData, path }) =>
-          createElement(BioFileView, { payload: customData as ViewerPayload | undefined, path }),
+        component: ({ customData, path, scope }) =>
+          createElement(BioFileView, {
+            payload: customData as ViewerPayload | undefined,
+            path,
+            sessionId: scope.sessionId,
+          }),
       }),
     "dsh-bioviewer: compressed viewer",
   );
@@ -277,7 +286,8 @@ function registerAll(ctx: Context): void {
             },
           };
         },
-        component: ({ tab }): ReactNode => createElement(StructureTabView, { path: tab.path }),
+        component: ({ tab, scope }): ReactNode =>
+          createElement(StructureTabView, { path: tab.path, sessionId: scope.sessionId }),
       }),
     "dsh-bioviewer: structure tab",
   );
@@ -306,6 +316,11 @@ function registerAll(ctx: Context): void {
         getSessionId: () => ctx.betterSidebar.getSnapshot().sessionId,
         subscribeSession: (listener) => ctx.betterSidebar.subscribeState(listener),
         sink: ctx.betterSidebar,
+        readFile: (path, signal) => {
+          const sessionId = ctx.betterSidebar.getSnapshot().sessionId;
+          if (sessionId === undefined) throw new Error("dsh-bioviewer: no session is mounted");
+          return readBytes(ctx, path, { sessionId }, signal);
+        },
         onError: (error) => {
           console.warn("[dsh-bioviewer] the agent-open poll failed", error);
         },

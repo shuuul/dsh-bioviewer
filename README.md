@@ -48,7 +48,7 @@ dsh plugin --profile web add "link:$PWD"
 
 ## Agent 打开
 
-`bio_open` 的 `target` 是路径或 `pdb:` / `alphafold:` / `emdb:` 条目，`title` 可选。`delivered: true` 表示已上屏；`false` 表示侧边栏未挂载、已排队。不支持的扩展名会被拒绝，并列出可支持格式。
+`bio_open` 的 `target` 是路径或 `pdb:` / `alphafold:` / `emdb:` 条目，打开**新**标签。`bio_add` 用同样的 `target` 把对象叠进当前 BioViewer（密度图叠结构、标记叠密度图、再开一个 PDB）。没有已打开的 viewer 时 `bio_add` 会先创建一个。`title` 可选。`delivered: true` 表示已到达客户端；`false` 表示侧边栏未挂载、已排队。不支持的扩展名会被拒绝，并列出可支持格式。
 
 ## 开发
 

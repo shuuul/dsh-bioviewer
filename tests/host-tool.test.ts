@@ -14,8 +14,16 @@ import type { Context } from "@deepseek-ai/cordis";
 import { apply } from "../src/index";
 import { OpenRegistry } from "../src/host/registry";
 import { OPEN_ROUTE_PATH, registerOpenRoute } from "../src/host/route";
-import { BIO_OPEN_TOOL, registerBioOpenTool } from "../src/host/tool";
-import { resolveOpen } from "../src/host/target";
+import { BIO_ADD_TOOL, BIO_OPEN_TOOL, registerViewerTools } from "../src/host/tool";
+import { resolveOpen as resolveOpenTarget } from "../src/host/target";
+
+function resolveOpen(
+  target: string,
+  title: string | undefined,
+  cwd: string | undefined,
+): ReturnType<typeof resolveOpenTarget> {
+  return resolveOpenTarget(target, title, cwd, "open");
+}
 import type { OpenRequest } from "../src/shared/opens";
 
 // ── the fake host ───────────────────────────────────────────────────────────
@@ -253,10 +261,18 @@ function fakeHost(options: HostOptions = {}): Harness {
 }
 
 /** The captured `bio_open` definition, or a loud failure. */
-function bioOpen(harness: Harness): CapturedTool {
-  const [definition] = harness.tools;
-  if (definition === undefined) throw new Error("no tool was registered");
+function toolNamed(harness: Harness, name: string): CapturedTool {
+  const definition = harness.tools.find((entry) => (entry as CapturedTool).name === name);
+  if (definition === undefined) throw new Error(`tool ${name} was not registered`);
   return definition as CapturedTool;
+}
+
+function bioOpen(harness: Harness): CapturedTool {
+  return toolNamed(harness, BIO_OPEN_TOOL);
+}
+
+function bioAdd(harness: Harness): CapturedTool {
+  return toolNamed(harness, BIO_ADD_TOOL);
 }
 
 /** A `ToolRunContext` stand-in: only `signal` and `agent.session` are read. */
@@ -292,7 +308,7 @@ describe("resolveOpen: files", () => {
   test("maps an absolute path to a file request with the detected format", () => {
     expect(resolveOpen("/data/1abc.pdb", undefined, undefined)).toEqual({
       kind: "file",
-      request: { kind: "file", path: "/data/1abc.pdb", title: "1abc.pdb", formatId: "pdb" },
+      request: { kind: "file", mode: "open", path: "/data/1abc.pdb", title: "1abc.pdb", formatId: "pdb" },
       target: "/data/1abc.pdb",
       title: "1abc.pdb",
     });
@@ -302,6 +318,7 @@ describe("resolveOpen: files", () => {
     const resolved = resolveOpen("models/1abc.cif", undefined, "/work/session");
     expect(resolved.request).toEqual({
       kind: "file",
+      mode: "open",
       path: "/work/session/models/1abc.cif",
       title: "1abc.cif",
       formatId: "mmcif",
@@ -311,6 +328,7 @@ describe("resolveOpen: files", () => {
   test("accepts Binary CIF as the mmCIF format", () => {
     expect(resolveOpen("/data/1abc.bcif", undefined, undefined).request).toEqual({
       kind: "file",
+      mode: "open",
       path: "/data/1abc.bcif",
       title: "1abc.bcif",
       formatId: "mmcif",
@@ -327,6 +345,7 @@ describe("resolveOpen: files", () => {
     const resolved = resolveOpen("/data/map.mrc.gz", undefined, undefined);
     expect(resolved.request).toEqual({
       kind: "file",
+      mode: "open",
       path: "/data/map.mrc.gz",
       title: "map.mrc",
       formatId: "ccp4",
@@ -364,7 +383,7 @@ describe("resolveOpen: structures", () => {
   test("normalises a PDB accession", () => {
     expect(resolveOpen("pdb:1cbs", undefined, undefined)).toEqual({
       kind: "structure",
-      request: { kind: "structure", source: "pdb", id: "1CBS", title: "PDB 1CBS" },
+      request: { kind: "structure", mode: "open", source: "pdb", id: "1CBS", title: "PDB 1CBS" },
       target: "pdb:1CBS",
       title: "PDB 1CBS",
     });
@@ -373,6 +392,7 @@ describe("resolveOpen: structures", () => {
   test("accepts the AlphaFold alias and normalises the accession", () => {
     expect(resolveOpen("alphafold:p00533", undefined, undefined).request).toEqual({
       kind: "structure",
+      mode: "open",
       source: "alphafold",
       id: "P00533",
       title: "AlphaFold P00533",
@@ -383,7 +403,7 @@ describe("resolveOpen: structures", () => {
   test("normalises an EMDB id with and without its EMD- prefix", () => {
     expect(resolveOpen("emdb:1234", undefined, undefined)).toMatchObject({
       target: "emdb:EMD-1234",
-      request: { kind: "structure", source: "emdb", id: "EMD-1234", title: "EMDB EMD-1234" },
+      request: { kind: "structure", mode: "open", source: "emdb", id: "EMD-1234", title: "EMDB EMD-1234" },
     });
     expect(resolveOpen("emdb:EMD-1234", undefined, undefined).target).toBe("emdb:EMD-1234");
   });
@@ -424,26 +444,31 @@ describe("resolveOpen: rejections", () => {
 // ── the tool ────────────────────────────────────────────────────────────────
 
 describe("bio_open registration", () => {
-  test("registers one tool under the bio-aware name", () => {
+  test("registers bio_open and bio_add", () => {
     const host = fakeHost();
-    registerBioOpenTool(host.ctx, new OpenRegistry());
-    expect(host.tools).toHaveLength(1);
+    registerViewerTools(host.ctx, new OpenRegistry());
+    expect(host.tools.map((entry) => (entry as CapturedTool).name).sort()).toEqual([BIO_ADD_TOOL, BIO_OPEN_TOOL]);
     const definition = bioOpen(host);
     expect(definition.name).toBe(BIO_OPEN_TOOL);
-    expect(definition.name).toBe("bio_open");
     // The description has to steer the model away from the generic tool.
     expect(definition.description).toContain("sidebar_open");
     expect(definition.description).toContain("pdb:1cbs");
     expect(definition.description).toContain("alphafold:P00533");
     expect(definition.description).toContain("emdb:EMD-1234");
+    expect(definition.description).toContain("bio_add");
     expect(definition.description).toContain("pdb");
     expect(typeof definition.execute).toBe("function");
     expect(typeof definition.output.render).toBe("function");
+
+    const add = bioAdd(host);
+    expect(add.description).toContain("stack");
+    expect(add.description).toContain("bio_open");
+    expect(add.description).toContain("pdb:1cbs");
   });
 
   test("declares target as the only required parameter, and a closed output object", () => {
     const host = fakeHost();
-    registerBioOpenTool(host.ctx, new OpenRegistry());
+    registerViewerTools(host.ctx, new OpenRegistry());
     const definition = bioOpen(host);
 
     expect(definition.parameters.type).toBe("object");
@@ -461,11 +486,12 @@ describe("bio_open registration", () => {
 
   test("degrades with a warning when the host has no tool registry", () => {
     const host = fakeHost({ tools: false });
-    const dispose = registerBioOpenTool(host.ctx, new OpenRegistry());
+    const dispose = registerViewerTools(host.ctx, new OpenRegistry());
     expect(typeof dispose).toBe("function");
     expect(host.tools).toHaveLength(0);
     expect(host.warnings.join("\n")).toContain("no tool registry");
     expect(host.warnings.join("\n")).toContain("bio_open");
+    expect(host.warnings.join("\n")).toContain("bio_add");
   });
 });
 
@@ -473,7 +499,7 @@ describe("bio_open execute", () => {
   test("queues a file resolved against the committed working directory", async () => {
     const registry = new OpenRegistry();
     const host = fakeHost({ workingDirectory: { get: () => "/committed" } });
-    registerBioOpenTool(host.ctx, registry);
+    registerViewerTools(host.ctx, registry);
 
     const result = await bioOpen(host).execute({ target: "1abc.pdb" }, fakeExec({ headerCwd: "/original" }));
     expect(result).toEqual({
@@ -484,6 +510,7 @@ describe("bio_open execute", () => {
     });
     expect(await registry.wait("s1", { signal: new AbortController().signal, timeoutMs: 0 })).toEqual({
       kind: "file",
+      mode: "open",
       path: "/committed/1abc.pdb",
       title: "1abc.pdb",
       formatId: "pdb",
@@ -493,7 +520,7 @@ describe("bio_open execute", () => {
   test("falls back to the session header cwd when the service has no value", async () => {
     const registry = new OpenRegistry();
     const host = fakeHost({ workingDirectory: { get: () => "" } });
-    registerBioOpenTool(host.ctx, registry);
+    registerViewerTools(host.ctx, registry);
 
     const result = await bioOpen(host).execute({ target: "1abc.pdb" }, fakeExec({ headerCwd: "/original" }));
     expect(result["target"]).toBe("/original/1abc.pdb");
@@ -502,24 +529,31 @@ describe("bio_open execute", () => {
   test("reports delivered:true when the sidebar is already polling", async () => {
     const registry = new OpenRegistry();
     const host = fakeHost();
-    registerBioOpenTool(host.ctx, registry);
+    registerViewerTools(host.ctx, registry);
 
     const parked = registry.wait("s1", { signal: new AbortController().signal, timeoutMs: 1_000 });
     const result = await bioOpen(host).execute({ target: "pdb:1cbs" }, fakeExec());
     expect(result).toEqual({ kind: "structure", target: "pdb:1CBS", title: "PDB 1CBS", delivered: true });
-    expect(await parked).toEqual({ kind: "structure", source: "pdb", id: "1CBS", title: "PDB 1CBS" });
+    expect(await parked).toEqual({
+      kind: "structure",
+      mode: "open",
+      source: "pdb",
+      id: "1CBS",
+      title: "PDB 1CBS",
+    });
   });
 
   test("queues a database structure for the calling session only", async () => {
     const registry = new OpenRegistry();
     const host = fakeHost();
-    registerBioOpenTool(host.ctx, registry);
+    registerViewerTools(host.ctx, registry);
 
     await bioOpen(host).execute({ target: "emdb:1234" }, fakeExec({ sessionId: "s7" }));
     expect(registry.hasWaiter("s7")).toBe(false);
     expect(await registry.wait("s1", { signal: new AbortController().signal, timeoutMs: 0 })).toBeNull();
     expect(await registry.wait("s7", { signal: new AbortController().signal, timeoutMs: 0 })).toEqual({
       kind: "structure",
+      mode: "open",
       source: "emdb",
       id: "EMD-1234",
       title: "EMDB EMD-1234",
@@ -528,7 +562,7 @@ describe("bio_open execute", () => {
 
   test("throws the canonical error without an initiating agent", async () => {
     const host = fakeHost();
-    registerBioOpenTool(host.ctx, new OpenRegistry());
+    registerViewerTools(host.ctx, new OpenRegistry());
     await expect(bioOpen(host).execute({ target: "pdb:1cbs" }, fakeExec({ agent: false }))).rejects.toThrow(
       /bio_open requires an initiating agent/,
     );
@@ -537,7 +571,7 @@ describe("bio_open execute", () => {
   test("propagates a rejection and queues nothing", async () => {
     const registry = new OpenRegistry();
     const host = fakeHost();
-    registerBioOpenTool(host.ctx, registry);
+    registerViewerTools(host.ctx, registry);
     await expect(bioOpen(host).execute({ target: "/data/notes.txt" }, fakeExec())).rejects.toThrow(
       /not a supported biomolecular file/,
     );
@@ -547,7 +581,7 @@ describe("bio_open execute", () => {
   test("an aborted call queues nothing", async () => {
     const registry = new OpenRegistry();
     const host = fakeHost();
-    registerBioOpenTool(host.ctx, registry);
+    registerViewerTools(host.ctx, registry);
     const controller = new AbortController();
     controller.abort();
     await expect(
@@ -558,7 +592,7 @@ describe("bio_open execute", () => {
 
   test("renders a queued open differently from a delivered one", () => {
     const host = fakeHost();
-    registerBioOpenTool(host.ctx, new OpenRegistry());
+    registerViewerTools(host.ctx, new OpenRegistry());
     const { render } = bioOpen(host).output;
     const value = { kind: "file", target: "/data/1abc.pdb", title: "1abc.pdb" };
 
@@ -566,6 +600,32 @@ describe("bio_open execute", () => {
     const queued = render({}, { ...value, delivered: false })[0]?.text ?? "";
     expect(queued).toContain("not connected");
     expect(queued).toContain("queued");
+  });
+});
+
+describe("bio_add execute", () => {
+  test("queues the same target as bio_open with mode add", async () => {
+    const registry = new OpenRegistry();
+    const host = fakeHost();
+    registerViewerTools(host.ctx, registry);
+
+    const result = await bioAdd(host).execute({ target: "pdb:1cbs" }, fakeExec());
+    expect(result).toEqual({ kind: "structure", target: "pdb:1CBS", title: "PDB 1CBS", delivered: false });
+    expect(await registry.wait("s1", { signal: new AbortController().signal, timeoutMs: 0 })).toEqual({
+      kind: "structure",
+      mode: "add",
+      source: "pdb",
+      id: "1CBS",
+      title: "PDB 1CBS",
+    });
+  });
+
+  test("renders Added rather than Opened", () => {
+    const host = fakeHost();
+    registerViewerTools(host.ctx, new OpenRegistry());
+    const { render } = bioAdd(host).output;
+    const value = { kind: "file", target: "/data/map.mrc", title: "map.mrc", delivered: true };
+    expect(render({}, value)[0]?.text).toContain("Added file");
   });
 });
 
@@ -613,7 +673,7 @@ describe("open route handler", () => {
 
   test("answers 200 with the queued request and the no-store envelope", async () => {
     const { registry, handler } = routed();
-    const request: OpenRequest = { kind: "structure", source: "pdb", id: "1CBS", title: "PDB 1CBS" };
+    const request: OpenRequest = { kind: "structure", mode: "open", source: "pdb", id: "1CBS", title: "PDB 1CBS" };
     registry.enqueue("s1", request);
 
     const res = fakeResponse();
@@ -706,8 +766,9 @@ describe("apply", () => {
 
     // The provider comes up: both register, through the injected callback.
     host.provideServices();
-    expect(host.tools).toHaveLength(1);
+    expect(host.tools).toHaveLength(2);
     expect(bioOpen(host).name).toBe(BIO_OPEN_TOOL);
+    expect(bioAdd(host).name).toBe(BIO_ADD_TOOL);
     expect(host.routes).toHaveLength(1);
     expect(host.routes[0]?.path).toBe(OPEN_ROUTE_PATH);
     expect(typeof host.routes[0]?.handler).toBe("function");
@@ -720,7 +781,7 @@ describe("apply", () => {
     const host = fakeHost({ providerLate: true, connection: { requestRejection: () => undefined } });
     apply(host.ctx);
 
-    expect(host.tools).toHaveLength(1);
+    expect(host.tools).toHaveLength(2);
     expect(host.routes).toHaveLength(1);
     expect(host.effects).toHaveLength(1);
     expect(host.injectDeps).toEqual([["webServer", "tools"]]);
@@ -747,16 +808,16 @@ describe("apply", () => {
     apply(host.ctx);
 
     expect(host.effects).toHaveLength(1);
-    expect(host.tools).toHaveLength(1);
+    expect(host.tools).toHaveLength(2);
     expect(host.routes).toHaveLength(1);
     expect(host.infos.join("\n")).toContain("dsh-bioviewer");
 
     host.effects[0]?.();
-    expect(host.unregistered).toEqual(["bio_open"]);
+    expect(host.unregistered).toEqual(["bio_add", "bio_open"]);
     expect(host.removed).toEqual([OPEN_ROUTE_PATH]);
     // Unload must be idempotent: a second teardown must not double-dispose.
     host.effects[0]?.();
-    expect(host.unregistered).toEqual(["bio_open"]);
+    expect(host.unregistered).toEqual(["bio_add", "bio_open"]);
   });
 
   test("degrades per registration if a service is unreadable when it runs", () => {

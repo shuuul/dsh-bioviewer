@@ -14,7 +14,7 @@ import type { OpenRequest } from "../src/shared/opens";
 
 /** A queued open, tagged so ordering assertions stay readable. */
 function open(id: string): OpenRequest {
-  return { kind: "structure", source: "pdb", id, title: `PDB ${id}` };
+  return { kind: "structure", mode: "open", source: "pdb", id, title: `PDB ${id}` };
 }
 
 /** An abort signal that never fires. */

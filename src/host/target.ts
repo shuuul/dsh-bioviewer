@@ -21,6 +21,7 @@ import {
   parseOpenTarget,
   structureTitle,
   unsupportedPathReason,
+  type OpenMode,
   type OpenRequest,
 } from "../shared/opens";
 
@@ -42,11 +43,17 @@ export interface ResolvedOpen {
  * @param target - the raw `target` argument.
  * @param title - the optional caller-supplied title; blank is treated as absent.
  * @param cwd - the calling session's working directory, used for relative paths.
+ * @param mode - `"open"` a new tab, or `"add"` into the live viewer.
  * @returns the request plus the canonical fields the tool reports.
  * @throws with a caller-actionable reason for an invalid target, an unsupported
  * extension, or a relative path in a session without a working directory.
  */
-export function resolveOpen(target: string, title: string | undefined, cwd: string | undefined): ResolvedOpen {
+export function resolveOpen(
+  target: string,
+  title: string | undefined,
+  cwd: string | undefined,
+  mode: OpenMode,
+): ResolvedOpen {
   const parsed = parseOpenTarget(target);
   if (parsed.kind === "invalid") throw new Error(parsed.reason);
 
@@ -59,7 +66,7 @@ export function resolveOpen(target: string, title: string | undefined, cwd: stri
     const resolvedTitle = asked ?? structureTitle(parsed.source, parsed.id);
     return {
       kind: "structure",
-      request: { kind: "structure", source: parsed.source, id: parsed.id, title: resolvedTitle },
+      request: { kind: "structure", mode, source: parsed.source, id: parsed.id, title: resolvedTitle },
       target: `${parsed.source}:${parsed.id}`,
       title: resolvedTitle,
     };
@@ -78,7 +85,7 @@ export function resolveOpen(target: string, title: string | undefined, cwd: stri
   const resolvedTitle = asked ?? detected.baseName;
   return {
     kind: "file",
-    request: { kind: "file", path: absolute, title: resolvedTitle, formatId: detected.format.id },
+    request: { kind: "file", mode, path: absolute, title: resolvedTitle, formatId: detected.format.id },
     target: absolute,
     title: resolvedTitle,
   };

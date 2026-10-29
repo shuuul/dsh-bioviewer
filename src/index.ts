@@ -9,7 +9,7 @@
  * - the loader mounts the plugin through it (`package.json#main`), and it is
  *   that loader row which makes the client half discoverable through
  *   `package.json#dsh.client`;
- * - it owns **agent-triggered opening**. The model calls the `bio_open` tool
+ * - it owns **agent-triggered viewing**. The model calls `bio_open` / `bio_add`
  *   (`./host/tool.ts`), the request is queued per session
  *   (`./host/registry.ts`), and the sidebar long-polls it back from
  *   `GET /bioviewer/open` (`./host/route.ts`). `ctx.sidebarRight` is a
@@ -25,7 +25,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import { OpenRegistry } from "./host/registry";
 import { registerOpenRoute } from "./host/route";
-import { registerBioOpenTool } from "./host/tool";
+import { registerViewerTools } from "./host/tool";
 
 /** Cordis plugin name, shown in loader diagnostics. */
 export const name = "dsh-bioviewer";
@@ -60,7 +60,7 @@ export function apply(ctx: Context): void {
     scoped.effect(() => {
       const registry = new OpenRegistry();
       const disposers: Array<() => void> = [
-        registerBioOpenTool(scoped, registry),
+        registerViewerTools(scoped, registry),
         registerOpenRoute(scoped, registry),
       ];
 
@@ -73,8 +73,8 @@ export function apply(ctx: Context): void {
         for (const dispose of disposers.reverse()) dispose();
         registry.dispose();
       };
-    }, "dsh-bioviewer: bio_open tool and open route");
+    }, "dsh-bioviewer: viewer tools and open route");
   });
 
-  ctx.logger.info("[dsh-bioviewer] mounted; the bio_open tool and its open route register once the host services are up");
+  ctx.logger.info("[dsh-bioviewer] mounted; bio_open / bio_add and the open route register once the host services are up");
 }

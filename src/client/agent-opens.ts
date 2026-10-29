@@ -16,6 +16,17 @@
  * @module dsh-bioviewer/client/agent-opens
  */
 import { isOpenRequest, type OpenRequest } from "../shared/opens";
+import { loadIntoStudio } from "./load";
+import { payloadFromOpenRequest, type ReadBioFile } from "./open-payload";
+import {
+  enqueuePending,
+  isOpening,
+  latestStudio,
+  markOpening,
+  setStudioReadyHandler,
+  takePending,
+  type StudioHandle,
+} from "./studios";
 import { pluginRouteUrl } from "./transport";
 
 /** Our host route, written without a leading slash (see `./transport.ts`). */
@@ -103,6 +114,32 @@ export function dispatchOpen(sink: OpenSink, sessionId: string, request: OpenReq
   );
 }
 
+/**
+ * Route one agent request: `open` always makes a tab; `add` stacks into the
+ * live studio, or opens a tab if this session has none yet. Adds that arrive
+ * while that first tab is still mounting wait and flush when it registers.
+ */
+export function handleViewerRequest(
+  sink: OpenSink,
+  sessionId: string,
+  request: OpenRequest,
+  add: (handle: StudioHandle, request: OpenRequest) => void,
+): void {
+  if (request.mode === "add") {
+    const live = latestStudio(sessionId);
+    if (live !== undefined) {
+      add(live, request);
+      return;
+    }
+    if (isOpening(sessionId)) {
+      enqueuePending(sessionId, request);
+      return;
+    }
+  }
+  markOpening(sessionId);
+  dispatchOpen(sink, sessionId, request);
+}
+
 /** An abortable delay. Resolves early — never rejects — when the signal fires. */
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -128,6 +165,8 @@ export interface AgentOpenLoopOptions {
   /** Subscribe to sidebar state changes (used to notice a session switch). */
   readonly subscribeSession: (listener: () => void) => () => void;
   readonly sink: OpenSink;
+  /** Fetch a workspace file's bytes so `bio_add` can load it into a live studio. */
+  readonly readFile?: ReadBioFile;
   readonly fetchImpl?: typeof fetch;
   readonly routeUrl?: (route: string) => string;
   /** Reports transport failures; the loop keeps running. */
@@ -156,6 +195,24 @@ export function startAgentOpens(options: AgentOpenLoopOptions): () => void {
   const maxRetryDelay = options.maxRetryDelayMs ?? 15_000;
   const minPollInterval = options.minPollIntervalMs ?? 250;
   const stopped = new AbortController();
+
+  const addToStudio = (handle: StudioHandle, request: OpenRequest): void => {
+    const readFile: ReadBioFile =
+      options.readFile ??
+      (async (path) => {
+        throw new Error(`dsh-bioviewer: bio_add of "${path}" needs the host file route`);
+      });
+    void payloadFromOpenRequest(request, readFile, stopped.signal)
+      .then((payload) => loadIntoStudio(handle.studio, payload, stopped.signal))
+      .catch((error: unknown) => {
+        handle.reportError(error);
+        options.onError?.(error);
+      });
+  };
+
+  setStudioReadyHandler((sessionId, handle) => {
+    for (const queued of takePending(sessionId)) addToStudio(handle, queued);
+  });
 
   // Reading the session id must never throw out of the loop: the accessor walks
   // a service the host owns, and one bad call would otherwise kill the poller
@@ -216,7 +273,7 @@ export function startAgentOpens(options: AgentOpenLoopOptions): () => void {
         backoff = 0;
         if (request !== null) {
           try {
-            dispatchOpen(options.sink, current, request);
+            handleViewerRequest(options.sink, current, request, addToStudio);
           } catch (error) {
             // A disabled tab type or a removed file must not kill the loop.
             options.onError?.(error);
@@ -242,6 +299,7 @@ export function startAgentOpens(options: AgentOpenLoopOptions): () => void {
   })();
 
   return () => {
+    setStudioReadyHandler(undefined);
     if (typeof unsubscribe === "function") (unsubscribe as () => void)();
     stopped.abort();
   };

@@ -54,9 +54,12 @@ the file tree or a chat link. `.gz` files work like their uncompressed twins.
 
 ## Agent opens
 
-`bio_open` takes a path or a `pdb:` / `alphafold:` / `emdb:` entry; `title` is
-optional. `delivered: true` means it is on screen; `false` means the sidebar is
-not mounted and the open is queued. Unsupported extensions are refused with the
+`bio_open` takes a path or a `pdb:` / `alphafold:` / `emdb:` entry and opens a
+**new** tab. `bio_add` uses the same `target` to stack an object into the live
+BioViewer (overlay a map on a structure, draw markers on a map, load a second
+PDB). If no viewer is open, `bio_add` creates one. `title` is optional.
+`delivered: true` means it reached a client; `false` means the sidebar is not
+mounted and the request is queued. Unsupported extensions are refused with the
 supported list.
 
 ## Development

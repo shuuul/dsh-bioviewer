@@ -37,6 +37,8 @@ export interface BioFileViewProps {
   readonly payload: ViewerPayload | undefined;
   /** Path the host asked for, used in the fallback notice. */
   readonly path: string;
+  /** Session this pane belongs to, so `bio_add` can stack into this studio. */
+  readonly sessionId?: string;
 }
 
 export function BioFileView(props: BioFileViewProps): ReactNode {
@@ -49,7 +51,7 @@ export function BioFileView(props: BioFileViewProps): ReactNode {
       body: t("notice.noData.body", { path: props.path }),
     });
   }
-  return createElement(BioViewer, { payload, theme });
+  return createElement(BioViewer, { payload, theme, sessionId: props.sessionId });
 }
 
 /**
@@ -60,7 +62,10 @@ export function BioFileView(props: BioFileViewProps): ReactNode {
  * `parseOpenTarget` the tool used. One parser, so the two halves cannot disagree
  * about what an address means.
  */
-export function StructureTabView(props: { readonly path: string | undefined }): ReactNode {
+export function StructureTabView(props: {
+  readonly path: string | undefined;
+  readonly sessionId?: string;
+}): ReactNode {
   const theme = useViewerTheme();
   const { t } = useViewerLocale();
   // A payload identity is a reload signal; a theme/parent render is not.
@@ -80,5 +85,6 @@ export function StructureTabView(props: { readonly path: string | undefined }): 
   return createElement(BioViewer, {
     payload: parsed,
     theme,
+    sessionId: props.sessionId,
   });
 }

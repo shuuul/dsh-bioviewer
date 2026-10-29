@@ -5,13 +5,18 @@
  * module is the wire between them, so it is deliberately dependency-free (it
  * imports only the pure format table) and shared verbatim by both halves.
  *
- * Two things can be opened:
+ * Two things can be opened, and each can land two ways:
  *
  * - a **file** — any path the format table recognises, including `.gz`;
  * - a **structure** — a database entry, addressed as `pdb:1cbs`,
  *   `alphafold:P00533` or `emdb:EMD-1234`. The sidebar has no local bytes for
  *   these, so the client hands the id to MolStudio's own database loaders
  *   (`loadPdb` / `loadAlphaFoldDb` / `loadEmdb`) instead of the byte path.
+ *
+ * `mode: "open"` always makes a new tab. `mode: "add"` stacks into the live
+ * BioViewer for that session (overlay a map on a structure, draw markers over
+ * a density, load a second PDB). If no viewer is open yet, add falls back to
+ * open so the first object still appears.
  *
  * @module dsh-bioviewer/shared/opens
  */
@@ -20,9 +25,13 @@ import { BIO_EXTENSIONS, detectBioFile } from "./formats";
 /** Which database a structure id refers to. */
 export type StructureSource = "pdb" | "alphafold" | "emdb";
 
+/** Open a new tab, or stack into the live BioViewer. */
+export type OpenMode = "open" | "add";
+
 /** A local file to show in the sidebar viewer. */
 export interface OpenFileRequest {
   readonly kind: "file";
+  readonly mode: OpenMode;
   /** Absolute path — the host resolves it before queueing, so the client never guesses a base. */
   readonly path: string;
   /** Display title, normally the basename. */
@@ -34,6 +43,7 @@ export interface OpenFileRequest {
 /** A database entry to show in the sidebar viewer. */
 export interface OpenStructureRequest {
   readonly kind: "structure";
+  readonly mode: OpenMode;
   readonly source: StructureSource;
   /** Accession exactly as the loader expects it (`1CBS`, `P00533`, `EMD-1234`). */
   readonly id: string;
@@ -142,10 +152,15 @@ export function unsupportedPathReason(path: string): string | undefined {
   return `"${path}" is not a supported biomolecular file. Supported extensions: ${supportedExtensionsText()} (each also with a .gz suffix).`;
 }
 
+function isOpenMode(value: unknown): value is OpenMode {
+  return value === "open" || value === "add";
+}
+
 /** Narrow a value off the wire before trusting it. */
 export function isOpenRequest(value: unknown): value is OpenRequest {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
+  if (!isOpenMode(candidate["mode"])) return false;
   if (candidate["kind"] === "file") {
     return typeof candidate["path"] === "string" && typeof candidate["title"] === "string";
   }

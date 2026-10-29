@@ -77,7 +77,7 @@ flowchart TD
   molstudio["MolStudio (loadStructure / loadVolume / loadPdb / loadAlphaFoldDb / loadEmdb / loadMarkers)"]
   molstar["Mol*"]
 
-  model["model calls bio_open"]
+  model["model calls bio_open / bio_add"]
   tool["src/host/tool.ts"]
   registry["src/host/registry.ts (per-session queue)"]
   poll["src/client/agent-opens.ts long-polls GET bioviewer/open"]
@@ -88,23 +88,26 @@ flowchart TD
 
 Note the two independent entry points into the same viewer: a user clicking a
 file goes through better-sidebar's matcher and our `load()`, while an agent open
-goes through the tool and the poll loop. Both end at `BioViewer`.
+or add goes through the tool and the poll loop. `bio_open` always makes a new
+tab; `bio_add` stacks into the live studio (or opens one if none exists). Both
+end at `BioViewer`.
 
 | Path | Role |
 | --- | --- |
-| `src/index.ts` | **Host half.** Owns the `bio_open` tool and its long-poll route; also the loader row that makes the client half discoverable. |
-| `src/host/tool.ts` | The `bio_open` tool: resolves the calling session and cwd, maps the target, queues it. |
+| `src/index.ts` | **Host half.** Owns the `bio_open` / `bio_add` tools and their long-poll route; also the loader row that makes the client half discoverable. |
+| `src/host/tool.ts` | `bio_open` and `bio_add`: resolve the calling session and cwd, map the target, queue it. |
 | `src/host/target.ts` | Pure target → `OpenRequest` mapping (no cordis, no DSH imports, so it tests alone). |
 | `src/host/registry.ts` | Per-session open queue + parked long-poll waiters (consume-once, bounded). |
 | `src/host/route.ts` | The fenced `GET /bioviewer/open` long poll. |
 | `src/client/index.tsx` | **Client half entry.** Registers the viewers, the compressed-file sniffer and both tabs. Owns stylesheet injection and the host-route resolver. |
-| `src/client/agent-opens.ts` | The poll loop that receives agent opens and dispatches them. |
+| `src/client/agent-opens.ts` | The poll loop that receives agent opens/adds and dispatches them. |
+| `src/client/studios.ts` | Live MolStudio registry so `bio_add` can stack into the current canvas. |
 | `src/client/transport.ts` | Prefix-safe URL resolution for this plugin's own host routes. |
 | `src/shared/formats.ts` | Pure format table + `detectBioFile` / `isBioFile`. Zero imports. |
 | `src/shared/opens.ts` | The agent-open wire contract (`OpenRequest`, `parseOpenTarget`, …). Shared by both halves. |
 | `src/client/bytes.ts` | Fetches raw bytes from the host media route and gunzips them. |
 | `src/client/load.ts` | `loadIntoStudio`: routes a payload to `loadStructure`/`loadVolume`/`loadPdb`/…/`loadMarkers`, and replaces a same-label object instead of stacking a duplicate. |
-| `src/client/studio.tsx` | `BioViewer`: pure renderer of an already-fetched payload (bytes, a database entry, or marker sets). |
+| `src/client/studio.tsx` | `BioViewer`: renderer of an already-fetched payload; registers its studio so `bio_add` can stack further objects. |
 | `src/client/browser.tsx` | The "BioViewer" tab page (workspace bio-file navigator). |
 | `src/client/cmm.ts` | Pure, DOM-free `.cmm` parser producing `@molstudio/core`'s `MarkerSet[]`. |
 | `src/client/file-view.tsx` | The viewer's leaf components (`BioFileView`, `StructureTabView`, `BioNotice`). Every payload carries a `kind`, so there is one render path. |
@@ -191,11 +194,12 @@ These were read out of the installed `dsh-better-sidebar@0.28.2` and
     `@deepseek-ai/dsh-client-ui-sidebar-right`'s host half is literally
     `export declare function apply(): void` — "the Sidebar contributes nothing to
     the host tree". There is therefore **no host-side API** that pushes an open
-    into the browser, which is why `bio_open` exists: the tool queues a request
-    (`src/host/registry.ts`), the client long-polls it back
-    (`GET /bioviewer/open`), and the client calls `ctx.betterSidebar.openFile` /
-    `openTab`. Do not "simplify" this into a host-side sidebar call; there isn't
-    one. Two consequences worth remembering: the poll is **consume-once**, so a
+    into the browser, which is why `bio_open` / `bio_add` exist: the tool queues
+    a request (`src/host/registry.ts`), the client long-polls it back
+    (`GET /bioviewer/open`), and the client either calls `ctx.betterSidebar.openFile`
+    / `openTab` (`bio_open`, or the first `bio_add`) or `loadIntoStudio` on the
+    live canvas (`bio_add` once a studio has registered). Do not "simplify" this
+    into a host-side sidebar call; there isn't one. Two consequences worth remembering: the poll is **consume-once**, so a
     request reaches exactly one client (same guarantee better-sidebar's
     agent-open socket gives), and `apply()` must never throw on a partial service
     — `registerAll` capability-checks `getSnapshot`/`subscribeState` and degrades

@@ -1,11 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   dispatchOpen,
+  handleViewerRequest,
   pollOpenRequest,
   startAgentOpens,
   STRUCTURE_TAB_ID,
   type OpenSink,
 } from "../src/client/agent-opens";
+import type { StudioLike } from "../src/client/load";
+import { latestStudio, registerStudio, resetStudios, setStudioReadyHandler, takePending } from "../src/client/studios";
 import type { OpenRequest } from "../src/shared/opens";
 
 /** A fetch double that records its calls and answers from a script. */
@@ -43,8 +46,27 @@ const parked = (init?: RequestInit): Promise<Response> =>
 
 const routeUrl = (route: string): string => `https://host/prefix/${route}`;
 
-const FILE_REQUEST: OpenRequest = { kind: "file", path: "/w/1abc.pdb", title: "1abc.pdb", formatId: "pdb" };
-const STRUCTURE_REQUEST: OpenRequest = { kind: "structure", source: "pdb", id: "1CBS", title: "PDB 1CBS" };
+const FILE_REQUEST: OpenRequest = {
+  kind: "file",
+  mode: "open",
+  path: "/w/1abc.pdb",
+  title: "1abc.pdb",
+  formatId: "pdb",
+};
+const STRUCTURE_REQUEST: OpenRequest = {
+  kind: "structure",
+  mode: "open",
+  source: "pdb",
+  id: "1CBS",
+  title: "PDB 1CBS",
+};
+const ADD_STRUCTURE: OpenRequest = {
+  kind: "structure",
+  mode: "add",
+  source: "emdb",
+  id: "EMD-1234",
+  title: "EMDB EMD-1234",
+};
 
 /** Poll a predicate until it holds, or fail the test. */
 async function until(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
@@ -90,12 +112,23 @@ describe("pollOpenRequest", () => {
     expect(await pollOpenRequest({ sessionId: "s1", fetchImpl: impl, routeUrl })).toBeNull();
   });
 
+  test("drops a request that has no mode (wire skew)", async () => {
+    const { impl } = fetchScript([
+      () => json({ ok: true, value: { request: { kind: "structure", source: "pdb", id: "1CBS", title: "PDB 1CBS" } } }),
+    ]);
+    expect(await pollOpenRequest({ sessionId: "s1", fetchImpl: impl, routeUrl })).toBeNull();
+  });
+
   test("rejects a structure request with an unknown source", async () => {
     const { impl } = fetchScript([
       () => json({ ok: true, value: { request: { kind: "structure", source: "genbank", id: "X" } } }),
     ]);
     expect(await pollOpenRequest({ sessionId: "s1", fetchImpl: impl, routeUrl })).toBeNull();
   });
+});
+
+afterEach(() => {
+  resetStudios();
 });
 
 describe("dispatchOpen", () => {
@@ -123,6 +156,64 @@ describe("dispatchOpen", () => {
         { sessionId: "s1" },
       ],
     ]);
+  });
+});
+
+describe("handleViewerRequest", () => {
+  test("an add with no live studio opens a tab (first object)", () => {
+    const calls: unknown[] = [];
+    const sink: OpenSink = {
+      openFile: () => calls.push("file"),
+      openTab: (seed) => calls.push(`tab:${seed.path}`),
+    };
+    const added: OpenRequest[] = [];
+    handleViewerRequest(sink, "s1", ADD_STRUCTURE, (_handle, request) => {
+      added.push(request);
+    });
+    expect(calls).toEqual(["tab:emdb:EMD-1234"]);
+    expect(added).toEqual([]);
+  });
+
+  test("an add with a live studio stacks instead of opening a tab", () => {
+    const studio = { loadPdb: async () => {} } as unknown as StudioLike;
+    registerStudio("s1", studio, () => {});
+    const calls: unknown[] = [];
+    const sink: OpenSink = {
+      openFile: () => calls.push("file"),
+      openTab: () => calls.push("tab"),
+    };
+    const added: OpenRequest[] = [];
+    handleViewerRequest(sink, "s1", ADD_STRUCTURE, (handle, request) => {
+      expect(handle.studio).toBe(studio);
+      added.push(request);
+    });
+    expect(calls).toEqual([]);
+    expect(added).toEqual([ADD_STRUCTURE]);
+    expect(latestStudio("s1")?.studio).toBe(studio);
+  });
+
+  test("an add while a tab is mounting waits, then flushes onto the studio", () => {
+    const calls: unknown[] = [];
+    const sink: OpenSink = {
+      openFile: () => calls.push("file"),
+      openTab: (seed) => calls.push(`tab:${seed.path}`),
+    };
+    const added: OpenRequest[] = [];
+    const add = (_handle: { studio: StudioLike }, request: OpenRequest): void => {
+      added.push(request);
+    };
+    setStudioReadyHandler((sessionId, handle) => {
+      for (const queued of takePending(sessionId)) add(handle, queued);
+    });
+    handleViewerRequest(sink, "s1", ADD_STRUCTURE, add);
+    const second: OpenRequest = { ...ADD_STRUCTURE, id: "EMD-9999", title: "EMDB EMD-9999" };
+    handleViewerRequest(sink, "s1", second, add);
+    expect(calls).toEqual(["tab:emdb:EMD-1234"]);
+    expect(added).toEqual([]);
+
+    const studio = { loadEmdb: async () => {} } as unknown as StudioLike;
+    registerStudio("s1", studio, () => {});
+    expect(added).toEqual([second]);
   });
 });
 

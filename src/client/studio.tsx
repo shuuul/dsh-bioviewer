@@ -39,6 +39,7 @@ import { loadIntoStudio } from "./load";
 import type { StudioLike } from "./load";
 import type { StudioLocale } from "./locale";
 import type { MarkersPayload, StructurePayload, ViewerPayload } from "./payload";
+import { registerStudio } from "./studios";
 import { useViewerLocale } from "./use-locale";
 
 export interface BioViewerProps {
@@ -46,6 +47,8 @@ export interface BioViewerProps {
   payload: ViewerPayload;
   /** Resolved by the host from DSH tokens (`src/client/theme.ts`). */
   theme: "light" | "dark";
+  /** Session this pane belongs to, so `bio_add` can stack into this studio. */
+  sessionId?: string;
 }
 
 type LoadStatus = "loading" | "ready" | "error";
@@ -70,7 +73,7 @@ interface LoadAttempt {
  * accession while it is in flight and shows the loader's own message when the
  * entry does not exist or the network is down.
  */
-export function BioViewer({ payload, theme }: BioViewerProps): ReactElement {
+export function BioViewer({ payload, theme, sessionId }: BioViewerProps): ReactElement {
   const { locale, onLocaleChange, t } = useViewerLocale();
   const [studio, setStudio] = useState<StudioLike | null>(null);
   const [studioError, setStudioError] = useState<string | null>(null);
@@ -102,6 +105,12 @@ export function BioViewer({ payload, theme }: BioViewerProps): ReactElement {
   const handleReady = useCallback((instance: MolStudio): void => {
     setStudio(instance);
   }, []);
+  useEffect(() => {
+    if (studio === null || sessionId === undefined) return;
+    return registerStudio(sessionId, studio, (cause) => {
+      setStudioError(cause instanceof Error ? cause.message : String(cause));
+    });
+  }, [studio, sessionId]);
   const handleStudioError = useCallback((cause: Error): void => {
     setStudioError(cause.message);
   }, []);
