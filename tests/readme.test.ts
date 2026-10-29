@@ -74,9 +74,4 @@ describe("README pair", () => {
     expect(sections(en)).toBe(sections(zh));
     expect(sections(zh)).toBeGreaterThanOrEqual(5);
   });
-
-  test("both state the marker-model limitation", () => {
-    expect(zh).toContain("不绘制");
-    expect(en).toContain("not drawn");
-  });
 });

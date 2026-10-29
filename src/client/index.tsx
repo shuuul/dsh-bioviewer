@@ -34,10 +34,10 @@ import { BIO_FORMATS, detectBioFile, type BioFormat } from "../shared/formats";
 import { startAgentOpens, STRUCTURE_TAB_ID } from "./agent-opens";
 import { fetchBioBytes } from "./bytes";
 import { BioBrowser } from "./browser";
-import { parseCmm, type MarkerPayload } from "./cmm";
-import { BioFileView, BioPayloadView, MarkerNotice, StructureTabView } from "./file-view";
+import { parseCmmMarkerSets } from "./cmm";
+import { BioFileView, StructureTabView } from "./file-view";
 import { BioViewerIcon } from "./icons";
-import type { BioViewerPayload, ViewerPayload } from "./payload";
+import type { BioViewerPayload, MarkersPayload, ViewerPayload } from "./payload";
 
 /**
  * No hard service dependency: better-sidebar is an *optional* peer, so the
@@ -144,20 +144,27 @@ async function loadBioPayload(
 }
 
 /**
- * Read one marker model. It is parsed rather than rendered — see
- * `./cmm.ts` for why there is no 3D path yet.
+ * Read one marker model.
+ *
+ * Parsing happens here rather than in the component so a malformed `.cmm` fails
+ * through the host's normal error path, and so the payload stays plain data.
+ * The parsed sets go to MolStudio's own `loadMarkers`, which draws them as
+ * spheres and tubes beside whatever else is loaded — the point of a marker
+ * model is to sit over a map, not to replace it.
  */
 async function loadMarkerPayload(
   ctx: Context,
   path: string,
   scope: { sessionId: string; cwd?: string },
   signal?: AbortSignal,
-): Promise<MarkerPayload> {
+): Promise<MarkersPayload> {
   const { bytes, gzip } = await readBytes(ctx, path, scope, signal);
+  const title = baseName(path);
   return {
+    kind: "markers",
     path,
-    title: baseName(path),
-    summary: parseCmm(new TextDecoder().decode(bytes)),
+    title,
+    sets: parseCmmMarkerSets(new TextDecoder().decode(bytes), title),
     gzip,
   };
 }
@@ -175,9 +182,10 @@ function registerAll(ctx: Context): void {
   ctx.effect(() => injectStyles(), "dsh-bioviewer: viewer styles");
 
   for (const format of BIO_FORMATS) {
-    // Marker models (`.cmm`) get a descriptor too, so a file the browser lists
-    // never dead-ends in the text editor. Their component reports the parsed
-    // contents instead of drawing them — see `./cmm.ts`.
+    // Marker models (`.cmm`) take the same path as everything else now: parsed
+    // into MolStudio's `MarkerSet` and drawn by `loadMarkers`. Only the loader
+    // differs, because a marker model is data for a shape node rather than a
+    // structure or a volume.
     const markers = format.kind === "markers";
 
     ctx.effect(
@@ -192,14 +200,10 @@ function registerAll(ctx: Context): void {
             markers
               ? loadMarkerPayload(ctx, path, scope, signal)
               : loadBioPayload(ctx, format, path, scope, signal),
-          component: markers
-            ? ({ customData }) =>
-                createElement(MarkerNotice, { payload: customData as MarkerPayload | undefined })
-            : ({ customData, path }) =>
-                createElement(BioFileView, {
-                  payload: customData as ViewerPayload | undefined,
-                  path,
-                }),
+          // Every payload variant carries a `kind`, so one component serves all
+          // of them and `BioViewer` narrows the union.
+          component: ({ customData, path }) =>
+            createElement(BioFileView, { payload: customData as ViewerPayload | undefined, path }),
         }),
       `dsh-bioviewer: ${format.id} viewer`,
     );
@@ -229,9 +233,8 @@ function registerAll(ctx: Context): void {
             ? loadMarkerPayload(ctx, path, scope, signal)
             : loadBioPayload(ctx, format, path, scope, signal);
         },
-        // Serves every format, so the component dispatches on the payload shape.
         component: ({ customData, path }) =>
-          createElement(BioPayloadView, { payload: customData, path }),
+          createElement(BioFileView, { payload: customData as ViewerPayload | undefined, path }),
       }),
     "dsh-bioviewer: compressed viewer",
   );

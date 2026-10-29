@@ -24,7 +24,7 @@ Mol\*.
 | `bun install` | Install dependencies |
 | `bun run build` | Build `lib/index.js` (host half) and `lib/client.js` (client half) + `.d.ts` |
 | `bun run typecheck` | `tsc -p tsconfig.json --noEmit` |
-| `bun run lint` | `oxlint` |
+| `bun run lint` | `oxlint --deny-warnings` — a warning fails the gate, not just the log |
 | `bun test` | `bun:test` suite |
 | `bun run verify:fast` | lint → typecheck → build → test. **The gate**: `.husky/pre-push` and CI both run exactly this |
 | `bun run build --no-minify` | Unminified bundle, for reading the emitted code |
@@ -44,9 +44,9 @@ flowchart TD
   load["load(path, scope, signal)"]
   route["GET sidebar/file?sessionId&path"]
   gunzip["gunzip() via DecompressionStream"]
-  payload["ViewerPayload (bytes | structure)"]
+  payload["ViewerPayload (bytes | structure | markers)"]
   viewer["BioViewer → &lt;Studio&gt;"]
-  molstudio["MolStudio (loadStructure / loadVolume / loadPdb / loadAlphaFoldDb / loadEmdb)"]
+  molstudio["MolStudio (loadStructure / loadVolume / loadPdb / loadAlphaFoldDb / loadEmdb / loadMarkers)"]
   molstar["Mol*"]
 
   model["model calls bio_open"]
@@ -75,11 +75,11 @@ goes through the tool and the poll loop. Both end at `BioViewer`.
 | `src/shared/formats.ts` | Pure format table + `detectBioFile` / `isBioFile`. Zero imports. |
 | `src/shared/opens.ts` | The agent-open wire contract (`OpenRequest`, `parseOpenTarget`, …). Shared by both halves. |
 | `src/client/bytes.ts` | Fetches raw bytes from the host media route and gunzips them. |
-| `src/client/load.ts` | `loadIntoStudio`: routes a payload to `loadStructure`/`loadVolume`/`loadPdb`/…, and replaces a same-label object instead of stacking a duplicate. |
-| `src/client/studio.tsx` | `BioViewer`: pure renderer of an already-fetched payload (bytes or a database entry). |
+| `src/client/load.ts` | `loadIntoStudio`: routes a payload to `loadStructure`/`loadVolume`/`loadPdb`/…/`loadMarkers`, and replaces a same-label object instead of stacking a duplicate. |
+| `src/client/studio.tsx` | `BioViewer`: pure renderer of an already-fetched payload (bytes, a database entry, or marker sets). |
 | `src/client/browser.tsx` | The "BioViewer" tab page (workspace bio-file navigator). |
-| `src/client/cmm.ts` | Pure `.cmm` parser (React-free). The marker pane component is `MarkerNotice` in `file-view.tsx`. |
-| `src/client/file-view.tsx` | The viewer's leaf components (`BioFileView`, `BioPayloadView`, `StructureTabView`, `MarkerNotice`, `BioNotice`) and the payload dispatcher. |
+| `src/client/cmm.ts` | Pure, DOM-free `.cmm` parser producing `@molstudio/core`'s `MarkerSet[]`. |
+| `src/client/file-view.tsx` | The viewer's leaf components (`BioFileView`, `StructureTabView`, `BioNotice`). Every payload carries a `kind`, so there is one render path. |
 | `src/client/theme.ts` | DSH colour-scheme detection (mirrors the host's own logic). |
 | `scripts/build.ts` | The build. Produces both halves and the `__ModuleLoader__` wrapper. |
 
@@ -133,14 +133,23 @@ These were read out of the installed `dsh-better-sidebar@0.28.2` and
    id makes whichever runs second inject nothing, silently.
    `tests/style-ids.test.ts` pins uniqueness.
 
-9. **Reload replaces, it does not append.** `MolStudio.loadStructure` has no
-   dedupe, so a naive reload stacks a second object with the same label.
-   `loadIntoStudio` removes same-label objects first via the public
-   `getSnapshot()` / `remove(id)`. For database entries the key cannot be the
-   payload title alone: the loaders name the object themselves (`loadPdb`
-   uppercases the id, `loadEmdb` normalises to `EMD-1234`, `loadAlphaFoldDb` uses
-   the API's `entryId`), so `load.ts` matches against every label MolStudio can
-   actually produce for that payload.
+9. **Reload replaces, it does not append — keyed on label AND kind.**
+   `MolStudio.loadStructure` has no dedupe, so a naive reload stacks a second
+   object with the same label. `loadIntoStudio` removes matching objects first
+   via the public `getSnapshot()` / `remove(id)`, and the key is a pair:
+   - **label**: for database entries the payload title alone is not enough,
+     because the loaders name the object themselves (`loadPdb` uppercases the id,
+     `loadEmdb` normalises to `EMD-1234`, `loadAlphaFoldDb` uses the API's
+     `entryId`), so `structureLabels()` matches against every label MolStudio can
+     actually produce.
+   - **kind**: `StudioObject` is a discriminated union, and matching on the label
+     alone would let a marker set called `markers` delete a structure that merely
+     shares the name. The kind is per source, not per route — **`loadEmdb`
+     produces a `volume`, not a structure** (it applies `DownloadDensity` and
+     reads the result out of `plugin.managers.volume.hierarchy`), so keying EMDB
+     as `"structure"` matches nothing on reload and silently restores the
+     duplicate-stacking bug. When a studio cannot report a kind the match falls
+     back to label-only, so it replaces rather than silently removing nothing.
 
 10. **`ctx.sidebarRight` is client-only, so an agent open needs a host route.**
     `@deepseek-ai/dsh-client-ui-sidebar-right`'s host half is literally
@@ -170,6 +179,18 @@ These were read out of the installed `dsh-better-sidebar@0.28.2` and
     real ordering (`inject: "now" | "manual" | "never"`) and pins the dep list.
     Only a live `dsh --profile web` run caught this, so re-run the host check in
     "Verifying on a real host" below after touching `src/index.ts`.
+
+12. **Marker models are drawn by `@molstudio/core`, not by us — and that needs
+    0.1.4.** Mol\* 5.13 genuinely has no public shape builder (`plugin.builders`
+    is only `data`, `structure`, `preset`), and that is what an earlier version of
+    this file wrongly concluded made `.cmm` unrenderable. MolStudio builds the
+    shape node itself: `MolStudio.loadMarkers(set)` adds a set as one object, and
+    `setMarkerColor` / `setMarkerSize` drive its display. **This API does not
+    exist in 0.1.3** — the dependency floor is `^0.1.4` and lowering it silently
+    turns every marker model back into an error. `src/client/cmm.ts` therefore
+    only has to produce `MarkerSet[]`; `loadIntoStudio` hands each set to
+    `loadMarkers`, and markers render *beside* other objects, which is the point
+    (prompt points over a density map).
 
 ## Verifying on a real host
 

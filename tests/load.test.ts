@@ -9,13 +9,14 @@
  * WebGL, no network and no Mol* import.
  */
 import { describe, expect, test } from "bun:test";
+import type { MarkerSet } from "@molstudio/core";
 import { BIO_FORMATS, detectBioFile } from "../src/shared/formats";
 import type { BioFormat } from "../src/shared/formats";
 import { structureTitle } from "../src/shared/opens";
 import type { StructureSource } from "../src/shared/opens";
 import { loadIntoStudio } from "../src/client/load";
 import type { StudioLike, StudioObjectSummary } from "../src/client/load";
-import type { BioViewerPayload, StructurePayload } from "../src/client/payload";
+import type { BioViewerPayload, MarkersPayload, StructurePayload } from "../src/client/payload";
 
 interface RecordedCall {
   readonly method: "loadStructure" | "loadVolume";
@@ -34,17 +35,22 @@ interface RecordedDatabaseCall {
 interface FakeObject {
   readonly id: string;
   readonly label: string;
+  /** `"structure" | "volume" | "markers"`, as `StudioObject` reports it. */
+  readonly kind?: string;
 }
 
 /**
  * A `StudioLike` that records what it was asked to load and to remove.
  *
- * All three database loaders exist unless `sources` narrows them, so a test can
- * build the "studio without this loader" case the adapter must reject.
+ * All three database loaders exist unless `sources` narrows them, and the marker
+ * loader exists unless `markers: false`, so a test can build the "studio without
+ * this loader" case the adapter must reject.
  */
 class FakeStudio implements StudioLike {
   readonly calls: RecordedCall[] = [];
   readonly database: RecordedDatabaseCall[] = [];
+  /** Every marker set handed to `loadMarkers`, in call order. */
+  readonly markerSets: MarkerSet[] = [];
   /** Every mutation in order, so a test can pin "remove, then load". */
   readonly events: string[] = [];
   /**
@@ -56,9 +62,17 @@ class FakeStudio implements StudioLike {
   loadPdb?: (id: string) => Promise<void>;
   loadAlphaFoldDb?: (id: string) => Promise<void>;
   loadEmdb?: (id: string) => Promise<void>;
+  loadMarkers?: (set: MarkerSet) => Promise<void>;
+  /** Mints ids for the objects the loaders "create", like Mol*'s state refs. */
+  private created = 0;
 
   constructor(
-    options: { failure?: Error; library?: readonly FakeObject[]; sources?: readonly StructureSource[] } = {},
+    options: {
+      failure?: Error;
+      library?: readonly FakeObject[];
+      sources?: readonly StructureSource[];
+      markers?: boolean;
+    } = {},
   ) {
     this.failure = options.failure;
     this.library = [...(options.library ?? [])];
@@ -66,11 +80,36 @@ class FakeStudio implements StudioLike {
     const record = (source: StructureSource) => async (id: string): Promise<void> => {
       this.events.push(`${source}:${id}`);
       this.database.push({ source, id });
+      // EMDB is a density map: MolStudio lands it as a volume, not a structure.
+      this.create(databaseLabel(source, id), source === "emdb" ? "volume" : "structure");
       if (this.failure !== undefined) throw this.failure;
     };
     if (sources.includes("pdb")) this.loadPdb = record("pdb");
     if (sources.includes("alphafold")) this.loadAlphaFoldDb = record("alphafold");
     if (sources.includes("emdb")) this.loadEmdb = record("emdb");
+    if (options.markers ?? true) {
+      this.loadMarkers = async (set: MarkerSet): Promise<void> => {
+        this.events.push(`markers:${set.label}`);
+        this.markerSets.push(set);
+        this.create(set.label, "markers");
+        if (this.failure !== undefined) throw this.failure;
+      };
+    }
+  }
+
+  /**
+   * Add the object a successful load creates, so "replace instead of
+   * accumulate" is observable: a second load of the same label must leave one
+   * object, not two.
+   *
+   * The byte and marker loaders take our label verbatim; the database loaders
+   * record the accession they were handed, which is the shape of the real ones
+   * (`loadPdb` uppercases it, `loadEmdb` normalises it — the reason
+   * `structureLabels` matches several candidates).
+   */
+  private create(label: string, kind: string): void {
+    this.created += 1;
+    this.library.push({ id: `ref-created-${this.created}`, label, kind });
   }
 
   getSnapshot(): { readonly objects: readonly StudioObjectSummary[] } {
@@ -86,12 +125,14 @@ class FakeStudio implements StudioLike {
   async loadStructure(options: { data: string | Uint8Array; label: string; format: string }): Promise<void> {
     this.events.push(`loadStructure:${options.label}`);
     this.calls.push({ method: "loadStructure", ...options });
+    this.create(options.label, "structure");
     if (this.failure !== undefined) throw this.failure;
   }
 
   async loadVolume(options: { data: string | Uint8Array; label: string; format: string }): Promise<void> {
     this.events.push(`loadVolume:${options.label}`);
     this.calls.push({ method: "loadVolume", ...options });
+    this.create(options.label, "volume");
     if (this.failure !== undefined) throw this.failure;
   }
 }
@@ -120,6 +161,54 @@ function bytesPayload(name: string, data: string | Uint8Array, title = name): Bi
 /** A `kind: "structure"` payload, titled the way the host titles it. */
 function structurePayload(source: StructureSource, id: string, title = structureTitle(source, id)): StructurePayload {
   return { kind: "structure", source, id, title };
+}
+
+/** One marker and one link, the smallest set MolStudio will draw. */
+function markerSet(label: string, markerCount = 1, linkCount = 0): MarkerSet {
+  return {
+    label,
+    markers: Array.from({ length: markerCount }, (_unused, index) => ({
+      position: [index, index + 1, index + 2] as [number, number, number],
+      radius: 1,
+      color: "#6aa5ff",
+    })),
+    links: Array.from({ length: linkCount }, (_unused, index) => ({
+      from: index,
+      to: index + 1,
+      radius: 0.4,
+      color: "#f0605d",
+    })),
+  };
+}
+
+/**
+ * The label each real database loader gives its object, which is what the
+ * adapter's removal candidates are built from: `loadPdb` uppercases the id
+ * (`packages/core/src/MolStudio.ts:267-275`), `loadEmdb` ends up as the
+ * normalised `EMD-<n>` via `volumeName` (`:375-380`), and `loadAlphaFoldDb`
+ * falls back to `AF-<ID>` when the API omits an entry id (`:277-286`).
+ */
+function databaseLabel(source: StructureSource, id: string): string {
+  switch (source) {
+    case "pdb":
+      return id.trim().toUpperCase();
+    case "alphafold":
+      return `AF-${id.trim().toUpperCase()}`;
+    case "emdb": {
+      const digits = /^(?:EMD-)?(\d+)$/i.exec(id.trim());
+      return digits === null ? id.trim().toUpperCase() : `EMD-${digits[1]}`;
+    }
+  }
+}
+
+/** The labels currently in the fake's state tree, in order. */
+function labelsOf(studio: FakeStudio): string[] {
+  return studio.library.map((object) => object.label);
+}
+
+/** A `kind: "markers"` payload, shaped exactly as the `.cmm` descriptor builds it. */
+function markersPayload(sets: readonly MarkerSet[], title = "markers.cmm"): MarkersPayload {
+  return { kind: "markers", path: `/data/${title}`, title, sets, gzip: false };
 }
 
 describe("loadIntoStudio routing", () => {
@@ -271,7 +360,8 @@ describe("loadIntoStudio database structures", () => {
     await loadIntoStudio(studio, structurePayload("pdb", "1CBS"));
 
     expect(studio.events).toEqual(["remove:ref-1", "pdb:1CBS"]);
-    expect(studio.library).toEqual([]);
+    // The loader names the object, not the payload title (see `structureLabels`).
+    expect(labelsOf(studio)).toEqual(["1CBS"]);
   });
 
   test("also replaces the label MolStudio assigns itself (a PDB id is uppercased)", async () => {
@@ -303,7 +393,7 @@ describe("loadIntoStudio database structures", () => {
     await loadIntoStudio(studio, structurePayload("pdb", "1CBS"));
 
     expect(studio.events).toEqual(["pdb:1CBS"]);
-    expect(studio.library).toHaveLength(2);
+    expect(labelsOf(studio)).toEqual(["2xyz", "EMD-9999", "1CBS"]);
   });
 
   test("propagates a database loader failure", async () => {
@@ -325,6 +415,200 @@ describe("loadIntoStudio database structures", () => {
     await loadIntoStudio(minimal, structurePayload("pdb", "1CBS"));
 
     expect(loaded).toEqual(["1CBS"]);
+  });
+});
+
+describe("loadIntoStudio marker sets", () => {
+  test("draws one set through loadMarkers, passing the set through unchanged", async () => {
+    const studio = new FakeStudio();
+    const set = markerSet("prompt points", 3, 2);
+
+    await loadIntoStudio(studio, markersPayload([set]));
+
+    expect(studio.markerSets).toHaveLength(1);
+    // Identity: the parsed set must reach MolStudio untouched (it becomes the
+    // state node's params, so a copy would still work but a rewrite would not).
+    expect(studio.markerSets[0]).toBe(set);
+    expect(studio.calls).toHaveLength(0);
+  });
+
+  test("draws every set, in file order", async () => {
+    const studio = new FakeStudio();
+    const sets = [markerSet("first", 2), markerSet("second", 1, 1), markerSet("third")];
+
+    await loadIntoStudio(studio, markersPayload(sets));
+
+    expect(studio.markerSets).toEqual(sets);
+    expect(studio.events).toEqual(["markers:first", "markers:second", "markers:third"]);
+  });
+
+  test("throws a clear error naming the missing loader", async () => {
+    const studio = new FakeStudio({ markers: false });
+
+    await expect(loadIntoStudio(studio, markersPayload([markerSet("a")]))).rejects.toThrow(/loadMarkers/);
+    expect(studio.markerSets).toHaveLength(0);
+    expect(studio.calls).toHaveLength(0);
+  });
+
+  test("a missing loader never mutates the object list", async () => {
+    const studio = new FakeStudio({ markers: false, library: [{ id: "ref-1", label: "a" }] });
+
+    await expect(loadIntoStudio(studio, markersPayload([markerSet("a")]))).rejects.toThrow(/loadMarkers/);
+
+    expect(studio.events).toEqual([]);
+    expect(studio.library).toEqual([{ id: "ref-1", label: "a" }]);
+  });
+
+  test("rejects a payload with no sets instead of showing an empty canvas", async () => {
+    const studio = new FakeStudio({ library: [{ id: "ref-1", label: "a" }] });
+
+    await expect(loadIntoStudio(studio, markersPayload([]))).rejects.toThrow(/no marker sets/);
+
+    expect(studio.events).toEqual([]);
+    expect(studio.library).toEqual([{ id: "ref-1", label: "a" }]);
+  });
+
+  test("replaces a same-label set and leaves everything else drawn", async () => {
+    const studio = new FakeStudio({
+      library: [
+        { id: "ref-map", label: "emd_1234" },
+        { id: "ref-markers", label: "prompt points" },
+        { id: "ref-other", label: "other" },
+      ],
+    });
+
+    await loadIntoStudio(studio, markersPayload([markerSet("prompt points", 2)]));
+
+    // A marker model is drawn BESIDE the data it annotates: only the set with
+    // the same label is replaced, the density map stays on screen.
+    expect(studio.events).toEqual(["remove:ref-markers", "markers:prompt points"]);
+    expect(labelsOf(studio)).toEqual(["emd_1234", "other", "prompt points"]);
+  });
+
+  test("draws every set even when two sets in one file share a label", async () => {
+    // Chimera's default marker-set name is "markers", so a multi-set file can
+    // legitimately repeat it. Removing per set would delete the set drawn a
+    // moment earlier, silently losing all but the last one.
+    const studio = new FakeStudio({ library: [{ id: "ref-old", label: "markers" }] });
+    const sets = [markerSet("markers", 2), markerSet("markers", 3)];
+
+    await loadIntoStudio(studio, markersPayload(sets));
+
+    expect(studio.events).toEqual(["remove:ref-old", "markers:markers", "markers:markers"]);
+    expect(studio.markerSets).toEqual(sets);
+    expect(labelsOf(studio)).toEqual(["markers", "markers"]);
+  });
+
+  test("drawing the same set twice leaves one object, not two", async () => {
+    const studio = new FakeStudio();
+    const set = markerSet("prompt points", 4);
+
+    await loadIntoStudio(studio, markersPayload([set]));
+    await loadIntoStudio(studio, markersPayload([set]));
+
+    expect(labelsOf(studio)).toEqual(["prompt points"]);
+    expect(studio.events).toEqual(["markers:prompt points", "remove:ref-created-1", "markers:prompt points"]);
+  });
+
+  test("propagates a rejection from MolStudio's own set validation", async () => {
+    // `validateMarkerSet` rejects an empty set; the message must reach the panel.
+    const studio = new FakeStudio({ failure: new Error("Marker set empty has no markers.") });
+
+    await expect(loadIntoStudio(studio, markersPayload([markerSet("empty", 0)]))).rejects.toThrow(
+      /has no markers/,
+    );
+  });
+
+  test("a studio without getSnapshot/remove still draws", async () => {
+    const drawn: MarkerSet[] = [];
+    const minimal: StudioLike = {
+      async loadStructure() {},
+      async loadVolume() {},
+      async loadMarkers(set) {
+        drawn.push(set);
+      },
+    };
+    const set = markerSet("only");
+
+    await loadIntoStudio(minimal, markersPayload([set]));
+
+    expect(drawn).toEqual([set]);
+  });
+});
+
+describe("loadIntoStudio replacement key (label + kind)", () => {
+  test("a structure labelled like a marker set survives the marker load (F3)", async () => {
+    // The verifier's repro: matching on the label alone deleted the structure.
+    const studio = new FakeStudio({
+      library: [{ id: "ref-structure", label: "markers", kind: "structure" }],
+    });
+
+    await loadIntoStudio(studio, markersPayload([markerSet("markers", 2)]));
+
+    expect(studio.events).toEqual(["markers:markers"]);
+    expect(studio.library).toEqual([
+      { id: "ref-structure", label: "markers", kind: "structure" },
+      { id: "ref-created-1", label: "markers", kind: "markers" },
+    ]);
+  });
+
+  test("the converse: a marker object labelled like a structure survives the file load", async () => {
+    const studio = new FakeStudio({
+      library: [{ id: "ref-markers", label: "1abc", kind: "markers" }],
+    });
+
+    await loadIntoStudio(studio, bytesPayload("1abc.pdb", "END\n", "1abc"));
+
+    expect(studio.events).toEqual(["loadStructure:1abc"]);
+    expect(studio.library).toEqual([
+      { id: "ref-markers", label: "1abc", kind: "markers" },
+      { id: "ref-created-1", label: "1abc", kind: "structure" },
+    ]);
+  });
+
+  test("three marker sets sharing a label all end up drawn", async () => {
+    const studio = new FakeStudio({ library: [{ id: "ref-old", label: "markers", kind: "markers" }] });
+    const sets = [markerSet("markers", 1), markerSet("markers", 2), markerSet("markers", 3)];
+
+    await loadIntoStudio(studio, markersPayload(sets));
+
+    expect(studio.events).toEqual([
+      "remove:ref-old",
+      "markers:markers",
+      "markers:markers",
+      "markers:markers",
+    ]);
+    expect(studio.markerSets).toEqual(sets);
+    expect(studio.library.filter((object) => object.kind === "markers")).toHaveLength(3);
+  });
+
+  test("an EMDB volume is replaced by label and kind, not by label alone", async () => {
+    const studio = new FakeStudio({
+      library: [
+        { id: "ref-volume", label: "EMD-1234", kind: "volume" },
+        { id: "ref-structure", label: "EMD-1234", kind: "structure" },
+      ],
+    });
+
+    await loadIntoStudio(studio, structurePayload("emdb", "1234"));
+
+    // EMDB is a density map: only the volume with that label is replaced.
+    expect(studio.events).toEqual(["remove:ref-volume", "emdb:1234"]);
+    expect(studio.library).toEqual([
+      { id: "ref-structure", label: "EMD-1234", kind: "structure" },
+      { id: "ref-created-1", label: "EMD-1234", kind: "volume" },
+    ]);
+  });
+
+  test("a studio that does not report object kinds still replaces by label", async () => {
+    // The fallback is deliberate: removing nothing would silently stop
+    // replacing, which is worse than the label-only match it degrades to.
+    const studio = new FakeStudio({ library: [{ id: "ref-1", label: "1abc" }] });
+
+    await loadIntoStudio(studio, bytesPayload("1abc.pdb", "END\n", "1abc"));
+
+    expect(studio.events).toEqual(["remove:ref-1", "loadStructure:1abc"]);
+    expect(labelsOf(studio)).toEqual(["1abc"]);
   });
 });
 
@@ -373,7 +657,7 @@ describe("loadIntoStudio replaces instead of accumulating", () => {
 
     // Order matters: the stale object must be gone before the new one lands.
     expect(studio.events).toEqual(["remove:ref-1", "loadStructure:1abc"]);
-    expect(studio.library).toEqual([]);
+    expect(labelsOf(studio)).toEqual(["1abc"]);
   });
 
   test("removes a same-label volume before loading the new map", async () => {
@@ -395,7 +679,7 @@ describe("loadIntoStudio replaces instead of accumulating", () => {
     await loadIntoStudio(studio, bytesPayload("2xyz.pdb", "END\n", "2xyz"));
 
     expect(studio.events).toEqual(["remove:ref-2", "loadStructure:2xyz"]);
-    expect(studio.library).toEqual([{ id: "ref-1", label: "1abc" }]);
+    expect(labelsOf(studio)).toEqual(["1abc", "2xyz"]);
   });
 
   test("removes every duplicate, not every other one (the snapshot is copied first)", async () => {
@@ -415,7 +699,7 @@ describe("loadIntoStudio replaces instead of accumulating", () => {
       "remove:ref-3",
       "remove:ref-4",
     ]);
-    expect(studio.library).toEqual([{ id: "ref-2", label: "other" }]);
+    expect(labelsOf(studio)).toEqual(["other", "dup"]);
   });
 
   test("a studio without getSnapshot/remove still loads (two-method double)", async () => {

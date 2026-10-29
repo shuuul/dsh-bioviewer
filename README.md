@@ -11,6 +11,7 @@
 - **结构** —— PDB 与 mmCIF，带 MolStudio 的对象列表，以及按对象的表示方式、配色方案、不透明度与聚焦控制。
 - **密度图** —— MRC / MAP / CCP4 体数据，带等值面控制与密度直方图。
 - **小分子** —— SDF、MOL、MOL2、PDBQT、GRO 与 XYZ。
+- **标记模型** —— Chimera `.cmm`：marker 画成球、link 画成管，带自己的颜色与半径，可以和密度图叠在同一个视图里。
 - **压缩文件** —— 上述所有格式都支持 `.gz` 后缀；文件在传输时保持压缩，在浏览器中解压。
 - **工作区浏览器** —— 一个「BioViewer」侧边栏 tab，列出会话工作目录下的生物文件，不用离开侧边栏就能找到它们。
 - **Agent 可以自己打开** —— 模型可以调用 `bio_open` 工具，把某个文件或某个数据库条目（`pdb:1cbs`、`alphafold:P00533`、`emdb:EMD-1234`）直接推到你的侧边栏里。
@@ -30,7 +31,7 @@
 | 小分子 | `pdbqt` | `pdbqt` |
 | 小分子 | `gro` | `gro` |
 | 小分子 | `xyz` | `xyz` |
-| 标记模型 | `cmm` | 能识别、能解析，**但不绘制** —— 见[已知限制](#已知限制) |
+| 标记模型 | `cmm` | 由 MolStudio 画成球与管（marker / link） |
 
 每个扩展名也都支持 `.gz` 后缀（`1abc.pdb.gz`、`map.mrc.gz` 等）。
 
@@ -111,7 +112,6 @@ bun run verify:fast  # lint + typecheck + build + test —— 钩子与 CI 用�
 
 ## 已知限制
 
-- **不绘制标记模型（`.cmm`）。** Mol\* 5.13 没有公开的 shape builder（`PluginContext.builders` 只有 `data`、`structure` 和 `preset`），要画球和连线就得直接操作 state tree。插件能识别、能列出、能解析这类文件，viewer 会报告 marker set 名称、marker 数与 link 数，而不是给你一个空视口。等 Mol\* 提供 shape builder，或者做一层「合成结构」桥接，才能真正画出来。
 - **不支持 Binary CIF（`.bcif`）** —— 它不在 Mol\* 内置的 trajectory 格式列表里。
 - 工作区浏览器一次只列一层目录，没有跨工作区的索引。
 - viewer 界面目前只有英文。

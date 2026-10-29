@@ -19,6 +19,9 @@ the same viewer stack as the
 - **Density maps** — MRC / MAP / CCP4 volumes with the contour control and the
   density histogram.
 - **Small molecules** — SDF, MOL, MOL2, PDBQT, GRO and XYZ.
+- **Marker models** — Chimera `.cmm`: markers drawn as spheres, links as tubes,
+  each with its own colour and radius, able to sit over a density map in the same
+  viewport.
 - **Compressed files** — every format above also works with a trailing `.gz`;
   the file stays compressed on the wire and is inflated in the browser.
 - **A workspace browser** — a "BioViewer" sidebar tab lists the bio files in the
@@ -44,7 +47,7 @@ the same viewer stack as the
 | Molecule | `pdbqt` | `pdbqt` |
 | Molecule | `gro` | `gro` |
 | Molecule | `xyz` | `xyz` |
-| Marker model | `cmm` | recognised, parsed, **not drawn** — see [Limitations](#limitations) |
+| Marker model | `cmm` | drawn by MolStudio as spheres and tubes (markers / links) |
 
 Every extension also works with a `.gz` suffix (`1abc.pdb.gz`, `map.mrc.gz`, …).
 
@@ -146,13 +149,6 @@ depends on, and the gotchas that are easy to reintroduce.
 
 ## Limitations
 
-- **Marker models (`.cmm`) are not drawn.** Mol\* 5.13 exposes no public shape
-  builder (`PluginContext.builders` has only `data`, `structure` and `preset`),
-  so rendering spheres and links would mean reaching into the state tree. The
-  file is recognised, listed and parsed, and the viewer reports the marker-set
-  name, marker count and link count instead of showing an empty viewport. The
-  fix is a shape-builder-backed renderer once Mol\* exposes one, or a
-  synthesised-structure bridge.
 - **Binary CIF (`.bcif`) is not supported** — it is not in Mol\*'s built-in
   trajectory format list.
 - The workspace browser lists one directory level at a time; there is no

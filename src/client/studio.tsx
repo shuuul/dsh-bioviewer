@@ -10,11 +10,12 @@
  * descriptor side, and a new payload object identity is the component's only
  * reload signal.
  *
- * A payload is either local bytes or a database entry (`pdb:` / `alphafold:` /
- * `emdb:`). The second kind has no bytes at all: `loadIntoStudio` hands the
- * accession to MolStudio's own loader, which does the network fetch, so the
- * loading state below covers a slow or failing download and always names the
- * entry being fetched.
+ * A payload is local bytes, a database entry (`pdb:` / `alphafold:` / `emdb:`)
+ * or a parsed marker model. A database entry has no bytes at all:
+ * `loadIntoStudio` hands the accession to MolStudio's own loader, which does
+ * the network fetch, so the loading state below covers a slow or failing
+ * download and always names the entry being fetched. A marker model is drawn
+ * *beside* whatever else the studio holds, so this component never clears it.
  *
  * Layout contract: the DSH native tab body is a *fixed-height block scroller*,
  * not a flex container (see the better-sidebar external-plugin guide, "原生 tab
@@ -35,7 +36,7 @@ import type { MolStudio } from "@molstudio/core";
 import { CloseIcon, ErrorIcon, RetryIcon, SpinnerIcon } from "./icons";
 import { loadIntoStudio } from "./load";
 import type { StudioLike } from "./load";
-import type { StructurePayload, ViewerPayload } from "./payload";
+import type { MarkersPayload, StructurePayload, ViewerPayload } from "./payload";
 
 export interface BioViewerProps {
   /** The file or database entry to display, already resolved by the descriptor. */
@@ -191,10 +192,18 @@ function StatusCard({
  *
  * A database entry is a network fetch that can take seconds and can fail, so
  * the detail line always names the entry being fetched — a bare spinner would
- * leave the user unable to tell which accession is in flight.
+ * leave the user unable to tell which accession is in flight. A marker model is
+ * local but can be large, so it reports what is about to be drawn.
  */
 function loadingDetail(payload: ViewerPayload): string {
-  return payload.kind === "bytes" ? payload.format.label : structureLoadingDetail(payload);
+  switch (payload.kind) {
+    case "bytes":
+      return payload.format.label;
+    case "structure":
+      return structureLoadingDetail(payload);
+    case "markers":
+      return markersLoadingDetail(payload);
+  }
 }
 
 function structureLoadingDetail(payload: StructurePayload): string {
@@ -207,6 +216,17 @@ function structureLoadingDetail(payload: StructurePayload): string {
     case "emdb":
       return `Downloading map ${id} from EMDB (author-recommended contour).`;
   }
+}
+
+/** Totals across every set in the file: `Drawing 12 markers and 3 links.` */
+function markersLoadingDetail(payload: MarkersPayload): string {
+  const markers = payload.sets.reduce((total, set) => total + set.markers.length, 0);
+  const links = payload.sets.reduce((total, set) => total + set.links.length, 0);
+  return `Drawing ${counted(markers, "marker")} and ${counted(links, "link")}.`;
+}
+
+function counted(value: number, noun: string): string {
+  return `${value} ${noun}${value === 1 ? "" : "s"}`;
 }
 
 /** Error text for anything a promise can reject with. */

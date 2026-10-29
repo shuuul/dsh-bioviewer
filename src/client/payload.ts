@@ -1,3 +1,4 @@
+import type { MarkerSet } from "@molstudio/core";
 import type { StructureSource } from "../shared/opens";
 import type { BioFormat } from "../shared/formats";
 
@@ -44,5 +45,24 @@ export interface StructurePayload {
   readonly title: string;
 }
 
+/**
+ * A Chimera marker model, already parsed into MolStudio's own vocabulary.
+ *
+ * Parsing happens in `load()` rather than in the component so a malformed file
+ * fails through the host's normal error path, and so the payload is plain data.
+ * A `.cmm` file may hold several `<marker_set>` elements; each becomes one
+ * object in the viewer.
+ */
+export interface MarkersPayload {
+  /** Discriminant: this payload holds parsed marker sets. */
+  readonly kind: "markers";
+  readonly path: string;
+  readonly title: string;
+  /** One entry per `<marker_set>`, in file order. */
+  readonly sets: readonly MarkerSet[];
+  /** Whether the file arrived gzip-compressed (kept for the UI to report). */
+  readonly gzip: boolean;
+}
+
 /** Everything a bio viewer component can be asked to render. */
-export type ViewerPayload = BioViewerPayload | StructurePayload;
+export type ViewerPayload = BioViewerPayload | StructurePayload | MarkersPayload;

@@ -6,7 +6,7 @@
  * with a fake studio and without a WebGL context, and so the viewer component
  * never has to know which Mol* entry point a payload belongs to.
  *
- * Two payload families, two routes:
+ * Three payload families, three routes:
  *
  * - `kind: "bytes"` — a file we fetched ourselves. The format table in
  *   `../shared/formats` decides the entry point (`format.kind`) and the Mol*
@@ -14,21 +14,35 @@
  * - `kind: "structure"` — a database entry with no local bytes. MolStudio owns
  *   those loaders (`loadPdb` / `loadAlphaFoldDb` / `loadEmdb`), including the
  *   network fetch and, for EMDB, the author-recommended contour level.
+ * - `kind: "markers"` — a `.cmm` marker model, already parsed into MolStudio's
+ *   own `MarkerSet` vocabulary by the descriptor. Each set becomes its own
+ *   object, drawn *beside* whatever else is in the studio (prompt points over a
+ *   density map is the point), so nothing but a same-label set is ever removed.
  *
  * Loading is *replacing*: the host re-runs the descriptor's `load()` after
  * every successful model write, and the viewer's retry button goes through the
  * same path, so a second load of the same thing must not leave the previous
  * object in Mol*'s object list. `MolStudio` has no dedupe of its own (verified
- * in `@molstudio/core` 0.1.3), so any existing object carrying one of the
- * payload's labels is removed first when the studio exposes
- * {@link StudioLike.getSnapshot} and {@link StudioLike.remove}.
+ * in `@molstudio/core` 0.1.4), so a pre-existing object is removed first when
+ * the studio exposes {@link StudioLike.getSnapshot} and {@link StudioLike.remove}
+ * — matched on label *and* kind, so replacing a marker set can never delete a
+ * structure that merely shares its name.
  */
-import type { BioViewerPayload, StructurePayload, ViewerPayload } from "./payload";
+import type { MarkerSet } from "@molstudio/core";
+import type { BioViewerPayload, MarkersPayload, StructurePayload, ViewerPayload } from "./payload";
 
-/** The slice of one Mol* object this adapter reads: enough to find a label. */
+/**
+ * The slice of one Mol* object this adapter reads: enough to key a replacement.
+ *
+ * `kind` is `"structure" | "volume" | "markers"` on a real `MolStudio`
+ * (`StudioObject` is a discriminated union, `@molstudio/core`
+ * `src/types.ts:163`); it is optional here so an older shape — or a test double
+ * that only tracks labels — still typechecks.
+ */
 export interface StudioObjectSummary {
   readonly id: string;
   readonly label: string;
+  readonly kind?: string;
 }
 
 /**
@@ -52,6 +66,8 @@ export interface StudioLike {
   loadAlphaFoldDb?(uniprotId: string): Promise<void>;
   /** `MolStudio.loadEmdb`: downloads the map and applies the author-recommended contour. */
   loadEmdb?(id: string): Promise<void>;
+  /** `MolStudio.loadMarkers`: adds one parsed marker set as its own shape object. */
+  loadMarkers?(set: MarkerSet): Promise<void>;
 }
 
 /** One `TextDecoder` reused for every structure; `decode()` here is one-shot. */
@@ -70,9 +86,10 @@ const TEXT_DECODER = new TextDecoder();
  *   format in our table is a text format, and Mol*'s trajectory parser treats
  *   a `Uint8Array` as BinaryCIF (mmcif) or as raw binary, so the bytes must be
  *   decoded here or the parse fails / silently yields nothing.
- * - `"markers"` — rejected with a clear error: `.cmm` is not a Mol* format at
- *   all (the reference host renders it as its own overlay), so loading it here
- *   would produce an empty viewer instead of a visible failure.
+ * - `"markers"` — rejected with a clear error: a `.cmm` file reaches Mol* as a
+ *   `kind: "markers"` payload (each `<marker_set>` becomes its own object), so a
+ *   bytes payload claiming this kind means the descriptor routed it wrong and
+ *   loading it here would produce an empty viewer instead of a visible failure.
  *
  * The label a byte payload loads under is `payload.title` — the object name the
  * user sees in Mol*'s list — and it is also the identity a reload replaces.
@@ -80,6 +97,10 @@ const TEXT_DECODER = new TextDecoder();
 export async function loadIntoStudio(studio: StudioLike, payload: ViewerPayload): Promise<void> {
   if (payload.kind === "structure") {
     await loadDatabaseEntry(studio, payload);
+    return;
+  }
+  if (payload.kind === "markers") {
+    await loadMarkerSets(studio, payload);
     return;
   }
   await loadByteFile(studio, payload);
@@ -99,8 +120,11 @@ async function loadByteFile(studio: StudioLike, payload: BioViewerPayload): Prom
   }
 
   // Validation stays ahead of the removal so a rejected payload never mutates
-  // the studio.
-  await removeObjectsLabelled(studio, [title]);
+  // the studio. A molecule loads as a structure too (Mol* models SDF/MOL2 as
+  // structures), so only a volume format is keyed as a volume.
+  await removeObjectsMatching(studio, [
+    { label: title, kind: format.kind === "volume" ? "volume" : "structure" },
+  ]);
 
   if (format.kind === "volume") {
     await studio.loadVolume({ data: bytes, label: title, format: format.molstarFormat });
@@ -115,8 +139,60 @@ async function loadDatabaseEntry(studio: StudioLike, payload: StructurePayload):
   // Resolve the loader before anything else: a studio that cannot load this
   // entry must not delete the object that is already on screen.
   const load = databaseLoader(studio, payload);
-  await removeObjectsLabelled(studio, structureLabels(payload));
+  // PDB and AlphaFold entries are structures; EMDB is a density map and lands as
+  // a volume (`loadEmdb` applies `DownloadDensity` and reads the result back out
+  // of `plugin.managers.volume.hierarchy`, `packages/core/src/MolStudio.ts:295-304`;
+  // `describeVolume` reports `kind: "volume"`, `:915`).
+  const kind = payload.source === "emdb" ? "volume" : "structure";
+  await removeObjectsMatching(
+    studio,
+    structureLabels(payload).map((label) => ({ label, kind })),
+  );
   await load(payload.id);
+}
+
+/**
+ * The `kind: "markers"` route: draw every set the file contained, in file order.
+ *
+ * Sets are additive on purpose — a marker model is drawn *over* whatever else
+ * the studio holds (prompt points on a density map), so only an object carrying
+ * the same label is replaced. That label is `set.label`, not the file title:
+ * `MarkerSetShape` builds its shape node with `label: params.set.label`
+ * (`packages/core/src/markers.ts:48,54`) and the snapshot reports the same field
+ * (`packages/core/src/MolStudio.ts:939`), so — unlike the database loaders — the
+ * label is fully predictable from the payload.
+ */
+async function loadMarkerSets(studio: StudioLike, payload: MarkersPayload): Promise<void> {
+  // Resolve the loader and check the payload before any removal, so a payload
+  // this studio cannot draw never deletes the drawing that is already there.
+  const load = markerLoader(studio);
+  if (payload.sets.length === 0) {
+    throw new Error(
+      `dsh-bioviewer: "${payload.title}" contains no marker sets, so there is nothing to draw.`,
+    );
+  }
+  // Replace what this file drew last time, then draw everything it holds now.
+  // The removal happens ONCE, before the first set: a file whose sets share a
+  // label must still draw all of them, and a per-set removal would delete the
+  // set drawn a moment earlier. Repeated labels are realistic — Chimera's own
+  // default marker-set name is "markers", and a parser falls back to a default
+  // when `name` is missing.
+  const labels = new Set(payload.sets.map((set) => set.label));
+  await removeObjectsMatching(
+    studio,
+    [...labels].map((label) => ({ label, kind: "markers" })),
+  );
+  for (const set of payload.sets) await load(set);
+}
+
+/** The marker loader, or a clear error naming the missing method. */
+function markerLoader(studio: StudioLike): (set: MarkerSet) => Promise<void> {
+  if (studio.loadMarkers === undefined) {
+    throw new Error(
+      "dsh-bioviewer: this Mol* studio cannot draw marker sets — loadMarkers() is missing, so the markers were not loaded.",
+    );
+  }
+  return studio.loadMarkers.bind(studio);
 }
 
 /** The loader a structure payload needs, or a clear error naming the missing one. */
@@ -178,14 +254,35 @@ function normalizeEmdbLabel(id: string): string {
   return digits === null ? id.toUpperCase() : `EMD-${digits[1]}`;
 }
 
-/** Drops every object whose label is one of `labels`, newest state included. */
-async function removeObjectsLabelled(studio: StudioLike, labels: readonly string[]): Promise<void> {
+/** One object identity: the label a payload loads under, and what it will be. */
+interface ObjectKey {
+  readonly label: string;
+  readonly kind: string;
+}
+
+/**
+ * Drops every object a payload's load is about to replace.
+ *
+ * Matched on label AND kind, never on the label alone: labels are user-visible
+ * names, so a structure a user happened to call `markers` must not vanish
+ * because a marker set with that label is drawn (verifier finding F3). The
+ * plugin's own labels are disjoint today — a file basename ending in `.cmm`
+ * versus a structure basename — but that disjointness is invisible, so the key
+ * states it instead of relying on it.
+ *
+ * A studio that does not report `kind` falls back to a label-only match:
+ * removing nothing would silently stop replacing, which is the worse failure.
+ */
+async function removeObjectsMatching(studio: StudioLike, keys: readonly ObjectKey[]): Promise<void> {
   const snapshot = studio.getSnapshot?.();
   const remove = studio.remove?.bind(studio);
   if (snapshot === undefined || remove === undefined) return;
   // Copy first: `remove` mutates the very state tree the snapshot came from,
   // and iterating the live list would skip every other match.
   for (const object of [...snapshot.objects]) {
-    if (labels.includes(object.label)) await remove(object.id);
+    const matches = keys.some(
+      (key) => key.label === object.label && (object.kind === undefined || object.kind === key.kind),
+    );
+    if (matches) await remove(object.id);
   }
 }

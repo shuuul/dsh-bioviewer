@@ -4,13 +4,13 @@ Adversarial verification of the C1–C6 claims in `task-4`. Every verdict below 
 backed by a command that was actually run and the output it produced; nothing
 here is a summary of intent.
 
-This is **revision 5** of the report. The tree has moved three times since the
+This is **revision 7** of the report. The tree has moved three times since the
 first PASS run: revision 2 (`markers.tsx` split, style-element id fixed, three
 test files added) was re-established in full; revision 3 was a docs-only delta
 (§3b); revision 4 adds the **agent-triggered open** surface, which changed the
 client half and the host half, so C1/C2/C3 were re-run on a fresh build and three
 of my assertions had to be updated to the new shape (§3c). §3 records revision 2,
-§3b revision 3, §3c revision 4, §3d revision 5.
+§3b revision 3, §3c revision 4, §3d revision 5, §3e revision 6, §3f revision 7.
 
 **Verified revision** — plugin files (`src/**`, `scripts/**`, `package.json`,
 `tsconfig*.json`, `cordis.patch.yml`) hashed as a tree:
@@ -18,15 +18,15 @@ of my assertions had to be updated to the new shape (§3c). §3 records revision
 ```
 $ find src scripts package.json tsconfig.json tsconfig.build.json cordis.patch.yml -type f \
     | sort | xargs shasum -a 256 | shasum -a 256
-2dae8e67da6d51dc15d4b3dab0de8fc43d1869734be94a5e570b977ab0cb8b63  -
+fb36a1796a2104ff1c16a75e67321fc4a6c35c76cc9e448acf0021ae5991aa92  -
 ```
 
 **Built artifacts**
 
-| Artifact | Size | sha256 | vs. revision 4 |
+| Artifact | Size | sha256 | vs. revision 6 |
 | --- | --- | --- | --- |
-| `lib/index.js` | 9 365 B | `fd619e982371c0d57af8641e0cc7268402b8502a2ae726415ff52e5c58c4ee59` | was 9 293 B (`056a92cd…`) |
-| `lib/client.js` | 3 353 497 B | `dfd85708e73e570536b4e3247936c02f973db55fef031ade47c24b92579a8b1d` | was 3 353 472 B (`01ec138a…`) |
+| `lib/index.js` | 9 365 B | `fd619e982371c0d57af8641e0cc7268402b8502a2ae726415ff52e5c58c4ee59` | **unchanged** (host half untouched) |
+| `lib/client.js` | 3 363 238 B | `ff5595c6653b8878dd0f2fa3cc55b139e9aca41257f308c6be19722d5b79389b` | was 3 362 947 B (`52613024…`) |
 
 Both changed this time, and deliberately: the client half gained the agent-open
 poller and the structure tab, and the host half gained `src/host/**` (the
@@ -64,10 +64,10 @@ Acceptance command (the one required by `task-4`):
 
 ```
 $ bun test tests/registration.test.ts tests/contract.test.ts tests/build.test.ts
- 61 pass
+ 72 pass
  0 fail
- 280 expect() calls
-Ran 61 tests across 3 files. [1810.00ms]
+ 330 expect() calls
+Ran 72 tests across 3 files. [1580.00ms]
 $ echo $?
 0
 ```
@@ -77,10 +77,10 @@ Whole-repository gate (lint → typecheck → build → test):
 ```
 $ bun run verify:fast
 ...
- 262 pass
+ 299 pass
  0 fail
- 1331 expect() calls
-Ran 262 tests across 16 files. [1850.00ms]
+ 3447 expect() calls
+Ran 299 tests across 16 files. [1990.00ms]
 $ echo $?
 0
 ```
@@ -329,6 +329,217 @@ non-function: `unsubscribe` is now held as `unknown` and called behind a
 My test no longer merely *records* this — it now **asserts** that every disposer
 returns cleanly, so a regression re-opens the finding as a failure. The loop
 still tears down normally (all 13 registrations removed on dispose).
+
+---
+
+## 3e. Revision 6 delta — markers render, and a limitation is REVERSED
+
+`@molstudio/core` and `@molstudio/react` went 0.1.3 → **0.1.4**, which adds the
+marker API (`loadMarkers`, `setMarkerColor`, `setMarkerSize`,
+`MARKER_SIZE_RANGE`). `src/client/cmm.ts` became a DOM-free port of bioviewer's
+`cmmMarkers.ts`, `load.ts`/`studio.tsx` gained a `kind: "markers"` route, and the
+marker special-casing was removed from `index.tsx`/`file-view.tsx`.
+
+**Correction to earlier revisions of this report.** Revisions 2–5 recorded, as a
+deliberate design decision, that `.cmm` "renders an explicit marker pane" because
+"Mol\* 5.13 exposes no public shape builder". The premise was true of Mol\* and
+the conclusion was wrong: MolStudio builds the shape node itself. Marker models
+now render in 3D, the dependency floor is `^0.1.4`, and the claim is retracted in
+both READMEs, in AGENTS.md (host contract #12) and in §7's D2 entry here.
+
+A tree-wide scan for the stale wording found exactly one remaining hit —
+AGENTS.md:175, which is the **retraction itself** ("that is what an earlier
+version of this file wrongly concluded"), i.e. correct:
+
+```
+$ grep -rniE "not drawn|不绘制|no public shape builder|cannot be rendered|not rendered" \
+    --include="*.md" --include="*.ts" --include="*.tsx" --include="*.json" . | grep -v node_modules
+./AGENTS.md:175:    0.1.4.** Mol\* 5.13 genuinely has no public shape builder (`plugin.builders`
+```
+
+Artifact legs re-run because the client half changed: C1 both halves build and
+every `package.json` target/`files` entry exists; C2 one handoff, id
+`dsh-bioviewer`, factory → `{ apply, inject }`, built `apply` wires 2 tabs + 11
+viewers, 16/16 non-gz extensions; C3 still exactly `react`, `react-dom`,
+`react/jsx-runtime` with 0 parse diagnostics; C6 host imports unchanged.
+
+### 3e.1 The port's fidelity — differential-tested against the reference
+
+cmm-dev's evidence (MolStudio's real `validateMarkerSet`) proves our output is
+*acceptable*; it does not prove our numbers match bioviewer's. So the two parsers
+were run side by side on the same inputs. The reference needs `DOMParser`, which
+Bun does not provide, so a ~40-line XML shim supplied exactly the surface it uses
+(`getElementsByTagName`, `children`, `tagName`, `getAttribute`) **plus the
+single-root `parsererror` rule** — the first run of this harness produced two
+apparent divergences that were shim artifacts (my multi-root cases were not
+well-formed XML), which is why the shim now models that rule.
+
+| Input | Result |
+| --- | --- |
+| `multi_marker_sets.cmm` (real fixture, 2 sets) | **identical** — labels `pocket A · …`, `pocket B · …`, 3+2 markers, 2+1 links |
+| `blob_1_NDP_1_prompt.cmm` (real fixture) | **identical** |
+| defaults (no `radius`, no `r`/`g`/`b`) | **identical** — radius `1 → 0.5`, colour `#ff0000` |
+| radius 3 | **identical** — `1.5` (the ×0.5 scale) |
+| colours + links | **identical** — link default `0.2` / `#ffffff`; `r=0.5,g=0.25,b=0` → `#804000` (i.e. `Math.round(x*255)`) |
+| 3 sets sharing the label `markers` (real `<marker_sets>` root) | **identical** — 3 sets, identical labels |
+| unnamed multi-set | **identical** — `marker set 1 · …`, `named · …` |
+| no `<marker_set>`, empty set | **identical** (both reject) |
+
+The four numbers the lead named are therefore confirmed against the reference
+*and* matched by ours: marker radius ×0.5, marker default radius 1 with red
+`#ff0000`, link default radius 0.2 with white `#ffffff`, and
+`Math.round(clamped * 255)` hex.
+
+The only two remaining differences are on **malformed** XML, where ours is
+stricter and the reference's behaviour depends on `DOMParser` reporting a
+`parsererror` — which my shim can only partially emulate:
+
+* two root elements: both reject; only the message differs (`Invalid CMM XML.` vs
+  ours, which names the reason);
+* a truncated document: ours rejects (`unclosed <marker_set> element`), the
+  shimmed reference accepts because the shim cannot detect unclosed tags. A real
+  `DOMParser` would report a `parsererror` and the reference would reject too.
+
+So: **no divergence on any well-formed input**, and the two malformed-input
+differences are both cases where our parser is the stricter of the two. This
+does not prove the shim is a faithful `DOMParser` in general — only that it is
+faithful for the surface the reference uses.
+
+### 3e.2 The shared-label fix — attacked three ways
+
+`loadMarkerSets` removes by label **once, before the first set**, because a
+per-set removal deletes the set drawn a moment earlier and Chimera's default
+marker-set name is `"markers"`. Driven against a studio double whose snapshot and
+`remove` actually track what is on screen:
+
+| Attack | Observed |
+| --- | --- |
+| three sets all labelled `markers` | `loadMarkers calls=3, objects on screen=3` — all three drawn (a per-set removal would leave **one**) |
+| the same file loaded twice | `after two loads: 3 objects` — replacement, not accumulation |
+| a set labelled `markers` when a **structure** labelled `markers` is already in the studio | the structure is **removed** — see **F3** |
+
+### 3e.3 The `sets: []` rejection
+
+| Level | Observed |
+| --- | --- |
+| parser (`<?xml?><marker_sets></marker_sets>`) | throws `CMM file does not contain a marker_set element.` |
+| loader (`kind: "markers"` with `sets: []`) | throws `dsh-bioviewer: "model.cmm" contains no marker sets, so there is nothing to draw.` |
+| side effects on the way to that error | `loads: []`, `removals: []` — nothing drawn, nothing deleted |
+| a studio with no `loadMarkers` | throws `… loadMarkers() is missing, so the markers were not loaded.`, and nothing is added |
+
+So the failure is a rejection with a user-facing message rather than a silent
+blank canvas. What I cannot verify without a browser is the *rendering* of that
+message (the error panel); the component's error path is asserted only as far as
+"the loader rejects", which is what the panel is driven by — consistent with §8.
+
+### 3e.4 The capability floor is real, not vacuous
+
+The new check asserts on the **real imported class**
+(`core.MolStudio.prototype.loadMarkers`), not a mock, and deliberately avoids
+pinning a version string. Its non-vacuity was checked against the version it
+exists to exclude:
+
+```
+$ npm pack @molstudio/core@0.1.3 && tar xzf *.tgz
+$ grep -rl "loadMarkers" package/dist/          → (nothing)
+$ grep -nE "loadMarkers|setMarkerColor|setMarkerSize|MARKER_SIZE_RANGE" package/dist/*.d.ts → (nothing)
+$ grep '"version"' node_modules/@molstudio/core/package.json → "0.1.4"
+```
+
+0.1.3 contains none of the four marker members anywhere in its `dist`, so the
+three `typeof … === "function"` assertions and the `MARKER_SIZE_RANGE` assertion
+would all fail against it — the floor fails loudly on a downgrade instead of
+turning every `.cmm` into a runtime error.
+
+---
+
+## 3f. Revision 7 delta — F3 fixed with a (label, kind) key, and a fix that would have re-broken dedupe
+
+The removal key became a pair: `removeObjectsMatching(studio, keys)` matches
+`label === object.label && (object.kind === undefined || object.kind === key.kind)`.
+Artifact legs re-run (the client half changed): C1/C2/C3/C6 all unchanged in
+outcome — 2 tabs + 11 viewers, 16/16 non-gz extensions, still exactly
+`react`, `react-dom`, `react/jsx-runtime`, 0 parse diagnostics.
+
+### 3f.1 The EMDB kind — the assertion genuinely pins it
+
+`loadEmdb` applies `DownloadDensity` and reads the result out of
+`plugin.managers.volume.hierarchy`, so `describeVolume` reports `kind: "volume"`
+(`node_modules/@molstudio/core/dist/types.d.ts:110`). Keying EMDB as
+`"structure"` matches nothing on reload — a fix that would have silently restored
+the duplicate-stacking bug contract #9 exists to prevent.
+
+viewer-dev's test seeds a studio with a volume **and** a structure both labelled
+`EMD-1234` and asserts only the volume is replaced. Mutating the kind back to
+`"structure"` in a throwaway copy (`/tmp/mut5`, deleted; `src/**` is outside my
+write scope; mutation landing asserted first):
+
+| Kind derivation | `tests/load.test.ts` |
+| --- | --- |
+| shipped (`emdb → "volume"`) | **44 pass / 0 fail** |
+| mutated (`emdb → "structure"`) | **43 pass / 1 fail** — only *"an EMDB volume is replaced by label and kind, not by label alone"* |
+
+So the test is not passing either way; it fails precisely when the kind is wrong.
+
+### 3f.2 Every `BIO_FORMATS` entry keys the kind MolStudio really produces
+
+MolStudio's object kinds are exactly `structure | volume | markers`
+(`types.d.ts:81,110,149`). The bytes route keys
+`format.kind === "volume" ? "volume" : "structure"`, and molecules go through
+`loadStructure`. Rather than eyeball it, each non-marker format is loaded with
+**both** kinds seeded under the same label, so only an exactly-matching key
+replaces:
+
+```
+[kind] bytes-route keys checked: pdb:structure, mmcif:structure, ccp4:volume,
+       sdf:structure, mol:structure, mol2:structure, pdbqt:structure,
+       gro:structure, xyz:structure
+```
+
+For every one of the nine, `remove:right` fires and `remove:wrong` does not — a
+molecule (SDF/MOL/MOL2) is keyed `structure`, `.mrc`/`.map`/`.ccp4` is keyed
+`volume`.
+
+### 3f.3 F3 inverted, both directions
+
+```
+[kind] after marker load: events=["load:markers"], survivors=["structure:ref-structure"]
+[kind] after structure load: events=["load:structure"]
+```
+
+A structure labelled `markers` now **survives** a marker load with that label
+(no `remove:` event at all), and a marker set labelled `1abc` survives a
+structure load. The converse holds.
+
+### 3f.4 No regression in the shared-label fix
+
+```
+[kind] shared-label: 3 marker loads, removed=["remove:old"]
+```
+
+Three sets all labelled `markers` still produce three loads, with exactly one
+removal (the previously drawn object) — the new key does not reintroduce the
+per-set removal that broke this before.
+
+### 3f.5 The `undefined` fallback is genuinely exercised
+
+```
+[kind] fallback: events=["remove:legacy", "load:structure"], remaining=0
+```
+
+A studio whose snapshot reports no `kind` still replaces by label. The assertion
+is on the `remove:legacy` **event**, which is only reachable through the
+`object.kind === undefined` branch — so the fallback is exercised, not
+incidentally true. (The opposite direction is covered by §3f.2: a *different*
+kind is never removed.)
+
+### 3f.6 A lint warning I introduced
+
+My new test tripped `eslint(no-unused-vars)` on an unused `objects`
+destructuring, which made `bunx oxlint` report 1 warning where the lead's run
+reported 0. Fixed; `bunx oxlint` is back to **0 warnings / 0 errors / 41 files**.
+Worth recording because `verify:fast` exits 0 on warnings, so this would not have
+failed the gate.
 
 ---
 
@@ -899,10 +1110,17 @@ $ bun -e 'import {BIO_EXTENSIONS,isBioFile} from "./src/shared/formats";
 true
 ```
 
-**Resolution:** a real `dsh-bioviewer:cmm` descriptor (priority 0, `exts: ["cmm"]`,
-`custom`) renders an explicit marker pane that reports the marker-set name,
-marker and link counts and states why there is no 3D path (Mol\* 5.13 exposes no
-public shape builder). C4(a) is now 16/16.
+**Resolution (revised in revision 6):** a real `dsh-bioviewer:cmm` descriptor
+(priority 0, `exts: ["cmm"]`, `custom`) was added, so C4(a) became 16/16. The
+marker pane it originally rendered reported the counts and claimed there was no
+3D path "because Mol\* 5.13 exposes no public shape builder".
+
+> **That claim was WRONG and is retracted.** Mol\* 5.13 really has no public
+> shape builder, but `@molstudio/core` builds the shape node itself:
+> `MolStudio.loadMarkers(set)` (added in **0.1.4**) adds a set as one object, with
+> `setMarkerColor` / `setMarkerSize` driving its display. The dependency floor is
+> now `^0.1.4`, and `.cmm` files render in 3D. See §3e — this report carried the
+> same wrong claim, and correcting it is part of this revision.
 
 ### D5 — two stylesheets shared one element id (found by the lead during audit)
 
@@ -973,6 +1191,39 @@ override it), so this is not a live defect. It is recorded because it shows the
 floor is load-bearing rather than decorative, and because the option's contract
 should be read as "a positive floor, or the loop can starve timers".
 
+### F3 — a marker set whose label matches a structure removed that structure (**RESOLVED in revision 7**)
+
+`loadMarkerSets` removes objects by label alone, so an object that happens to
+carry the same label as a marker set is indistinguishable from a set this file
+drew earlier. Observed:
+
+```
+[markers] survivors after a colliding load: ["markers:markers"]
+[markers] F3 the structure was removed: true
+```
+
+A studio holding a **structure** labelled `markers` loses it when a marker set
+labelled `markers` is drawn — which needs a structure whose label equals the
+set's label, e.g. a file literally named `markers.pdb` (the label comes from the
+file title). The consequence is a silently missing structure, not a crash.
+
+This was a consequence of the same label-based replacement that makes the
+shared-label fix work (contract #9).
+
+**Fixed in revision 7** by keying removal on `(label, kind)`. Verified in both
+directions in §3f.3 — a structure labelled `markers` now survives a marker load,
+and a marker set labelled like a structure survives a structure load.
+
+**The fix is worth keeping as a worked example of a fix that would have
+introduced the bug it was fixing.** The first specification of the kind was
+"database → `structure`", which is wrong for EMDB: `loadEmdb` lands a **volume**
+(`describeVolume` reports `kind: "volume"`). Keying EMDB as `"structure"` would
+have matched nothing on reload and silently restored the duplicate-stacking bug
+contract #9 exists to prevent — while looking like a correctness improvement and
+passing every label-only assertion. viewer-dev caught it; §3f.1 shows the
+regression test fails when the kind is mutated back, so the distinction is now
+pinned rather than reviewed.
+
 ---
 
 ## 8. What is still not verified
@@ -983,6 +1234,10 @@ should be read as "a positive floor, or the loop can starve timers".
    UI remain unverified**. The in-process materialization in §4 runs under a
    hand-written DOM shim, not a browser. The agent-open loop in particular has
    never run against a real `fetch`, a real host route, or a real session switch.
+   This now covers markers too: §3e verifies that a `.cmm` parses to the right
+   numbers and reaches `loadMarkers` with the right sets, but **no marker has ever
+   been drawn by a real Mol\* renderer** — the shape node, its colour/size
+   application and the error panel's appearance are all unverified.
 8. **The host route is verified at the HTTP boundary only (revision 5).** Booting
    a real host showed `/bioviewer/open` answering `403` with our JSON envelope when
    unauthenticated, `400` without a `sessionId`, and holding an authenticated poll

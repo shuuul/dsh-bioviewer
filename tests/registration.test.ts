@@ -18,9 +18,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { BIO_EXTENSIONS } from "../src/shared/formats";
+import { BIO_EXTENSIONS, BIO_FORMATS } from "../src/shared/formats";
 import { OPEN_ROUTE, STRUCTURE_TAB_ID, startAgentOpens } from "../src/client/agent-opens";
 import { pluginRouteUrl, transportBase } from "../src/client/transport";
+import { loadIntoStudio } from "../src/client/load";
+import { parseCmmMarkerSets } from "../src/client/cmm";
 
 const root = join(import.meta.dir, "..");
 const shippedClientJs = join(root, "node_modules/dsh-better-sidebar/lib/client.js");
@@ -1007,5 +1009,287 @@ describe("ADVERSARIAL transport base resolution", () => {
     const url = pluginRouteUrl("bioviewer/open", fakeDoc("http://127.0.0.1:5000/gui"));
     console.log(`[transport] no-trailing-slash base -> ${url}`);
     expect(url).toBe("http://127.0.0.1:5000/bioviewer/open");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADVERSARIAL — the marker route (new in the 0.1.4 delta)
+//
+// `loadIntoStudio`'s `kind: "markers"` route draws every set a file contained.
+// The trap is removal: a per-set removal deletes the set drawn a moment earlier,
+// and repeated labels are realistic because Chimera's own default marker-set
+// name is "markers".
+// ---------------------------------------------------------------------------
+
+interface FakeObject {
+  id: string;
+  label: string;
+  kind: "markers" | "structure";
+}
+
+/** A studio double whose snapshot/remove actually track what is on screen. */
+function makeMarkerStudio(): {
+  studio: Record<string, unknown>;
+  objects: FakeObject[];
+  loads: string[];
+  removals: string[];
+} {
+  let seq = 0;
+  const objects: FakeObject[] = [];
+  const loads: string[] = [];
+  const removals: string[] = [];
+  const studio: Record<string, unknown> = {
+    loadStructure: async () => {},
+    loadVolume: async () => {},
+    getSnapshot: () => ({ objects: objects.map((o) => ({ id: o.id, label: o.label })) }),
+    remove: async (id: string) => {
+      removals.push(id);
+      const at = objects.findIndex((o) => o.id === id);
+      if (at >= 0) objects.splice(at, 1);
+    },
+    loadMarkers: async (set: { label: string }) => {
+      loads.push(set.label);
+      seq += 1;
+      objects.push({ id: `m${seq}`, label: set.label, kind: "markers" });
+    },
+  };
+  return { studio, objects, loads, removals };
+}
+
+const markerSet = (label: string, x: number): Record<string, unknown> => ({
+  label,
+  markers: [{ position: [x, 0, 0], radius: 0.5, color: "#ff0000" }],
+  links: [],
+});
+
+const markerPayload = (sets: unknown[]): Record<string, unknown> => ({
+  kind: "markers",
+  path: "/tmp/model.cmm",
+  title: "model.cmm",
+  sets,
+  gzip: false,
+});
+
+describe("ADVERSARIAL marker route", () => {
+  test("three sets sharing one label are ALL drawn", async () => {
+    const { studio, objects, loads } = makeMarkerStudio();
+    await loadIntoStudio(studio as never, markerPayload([
+      markerSet("markers", 1),
+      markerSet("markers", 2),
+      markerSet("markers", 3),
+    ]) as never);
+    console.log(`[markers] loadMarkers calls=${loads.length}, objects on screen=${objects.length}`);
+    // A per-set removal would leave exactly one object here.
+    expect(loads).toHaveLength(3);
+    expect(objects).toHaveLength(3);
+    expect(objects.map((o) => o.label)).toEqual(["markers", "markers", "markers"]);
+  });
+
+  test("re-drawing the same file leaves exactly one object per set", async () => {
+    const { studio, objects } = makeMarkerStudio();
+    const payload = markerPayload([markerSet("markers", 1), markerSet("markers", 2), markerSet("markers", 3)]);
+    await loadIntoStudio(studio as never, payload as never);
+    await loadIntoStudio(studio as never, payload as never);
+    console.log(`[markers] after two loads: ${objects.length} objects, ids=${objects.map((o) => o.id).join(",")}`);
+    expect(objects).toHaveLength(3);
+  });
+
+  test("a set whose label collides with a STRUCTURE in the studio", async () => {
+    // Removal matches on label alone, so a structure labelled like the marker
+    // set is indistinguishable from a previously drawn set. Recorded, not
+    // asserted away: see docs/VERIFICATION.md (finding F3).
+    const { studio, objects } = makeMarkerStudio();
+    objects.push({ id: "s1", label: "markers", kind: "structure" });
+    await loadIntoStudio(studio as never, markerPayload([markerSet("markers", 1)]) as never);
+    const survivors = objects.map((o) => `${o.kind}:${o.label}`);
+    console.log(`[markers] survivors after a colliding load: ${JSON.stringify(survivors)}`);
+    console.log(`[markers] F3 the structure was removed: ${!survivors.includes("structure:markers")}`);
+  });
+
+  test("a .cmm with no marker_set is rejected, not drawn as a blank canvas", async () => {
+    // Parser level.
+    let parseError: string | undefined;
+    try {
+      parseCmmMarkerSets(`<?xml version="1.0"?><marker_sets></marker_sets>`, "empty");
+    } catch (error) {
+      parseError = (error as Error).message;
+    }
+    console.log(`[markers] empty-file parse error: ${parseError}`);
+    expect(parseError).toBeDefined();
+
+    // Loader level: an empty set list must throw before it touches the studio,
+    // so the component's error path renders instead of an empty viewport.
+    const { studio, removals, loads } = makeMarkerStudio();
+    let loadError: string | undefined;
+    try {
+      await loadIntoStudio(studio as never, markerPayload([]) as never);
+    } catch (error) {
+      loadError = (error as Error).message;
+    }
+    console.log(`[markers] empty-payload load error: ${loadError}`);
+    expect(loadError).toBeDefined();
+    expect(loadError).toContain("no marker sets");
+    // Nothing was drawn and nothing was deleted on the way to the error.
+    expect(loads).toEqual([]);
+    expect(removals).toEqual([]);
+  });
+
+  test("a studio without loadMarkers fails loudly instead of silently doing nothing", async () => {
+    const { studio, objects } = makeMarkerStudio();
+    delete studio["loadMarkers"];
+    let error: string | undefined;
+    try {
+      await loadIntoStudio(studio as never, markerPayload([markerSet("markers", 1)]) as never);
+    } catch (caught) {
+      error = (caught as Error).message;
+    }
+    console.log(`[markers] missing-loadMarkers error: ${error}`);
+    expect(error).toContain("loadMarkers");
+    expect(objects).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADVERSARIAL — the (label, kind) replacement key
+//
+// `loadIntoStudio` drops the objects a payload is about to replace, matched on
+// label AND kind. Getting the kind wrong is silent in both directions: too
+// narrow and nothing is removed (the duplicate-stacking bug contract #9 exists
+// to prevent), too wide and an unrelated object vanishes.
+// ---------------------------------------------------------------------------
+
+interface KindObject {
+  id: string;
+  label: string;
+  kind?: string;
+}
+
+/** A studio double that records which loader ran and what was removed. */
+function makeKindStudio(seed: readonly KindObject[]): {
+  studio: Record<string, unknown>;
+  objects: KindObject[];
+  events: string[];
+} {
+  const objects: KindObject[] = seed.map((object) => ({ ...object }));
+  const events: string[] = [];
+  const studio: Record<string, unknown> = {
+    loadStructure: async () => {
+      events.push("load:structure");
+    },
+    loadVolume: async () => {
+      events.push("load:volume");
+    },
+    loadMarkers: async () => {
+      events.push("load:markers");
+    },
+    loadPdb: async () => {
+      events.push("load:pdb");
+    },
+    loadAlphaFoldDb: async () => {
+      events.push("load:alphafold");
+    },
+    loadEmdb: async () => {
+      events.push("load:emdb");
+    },
+    getSnapshot: () => ({ objects: objects.map((object) => ({ ...object })) }),
+    remove: async (id: string) => {
+      events.push(`remove:${id}`);
+      const at = objects.findIndex((object) => object.id === id);
+      if (at >= 0) objects.splice(at, 1);
+    },
+  };
+  return { studio, objects, events };
+}
+
+const bytesPayloadFor = (format: unknown): Record<string, unknown> => ({
+  kind: "bytes",
+  path: "/data/sample",
+  title: "sample",
+  bytes: new Uint8Array([1, 2, 3]),
+  format,
+  gzip: false,
+});
+
+describe("ADVERSARIAL (label, kind) replacement key", () => {
+  test("every BIO_FORMATS entry keys the kind MolStudio actually produces", async () => {
+    // The bytes route keys `volume` for volumes and `structure` for everything
+    // else, because molecules go through `loadStructure`. Seeding BOTH kinds
+    // under the same label makes the assertion exact: only the object whose kind
+    // matches may be replaced.
+    const checked: string[] = [];
+    for (const format of BIO_FORMATS) {
+      if (format.kind === "markers") continue; // never reaches the bytes route
+      const expected = format.kind === "volume" ? "volume" : "structure";
+      const other = expected === "volume" ? "structure" : "volume";
+      const { studio, objects, events } = makeKindStudio([
+        { id: "right", label: "sample", kind: expected },
+        { id: "wrong", label: "sample", kind: other },
+      ]);
+      await loadIntoStudio(studio as never, bytesPayloadFor(format) as never);
+      checked.push(`${format.id}:${expected}`);
+      expect(events).toContain("remove:right");
+      expect(events).not.toContain("remove:wrong");
+      expect(objects.map((object) => object.id)).toEqual(["wrong"]);
+    }
+    console.log(`[kind] bytes-route keys checked: ${checked.join(", ")}`);
+    expect(checked.length).toBeGreaterThanOrEqual(9);
+  });
+
+  test("F3 inverted: a STRUCTURE labelled 'markers' survives a marker load", async () => {
+    const { studio, objects, events } = makeKindStudio([{ id: "ref-structure", label: "markers", kind: "structure" }]);
+    await loadIntoStudio(studio as never, markerPayload([markerSet("markers", 1)]) as never);
+    console.log(`[kind] after marker load: events=${JSON.stringify(events)}, survivors=${JSON.stringify(objects.map((o) => `${o.kind}:${o.id}`))}`);
+    expect(events).not.toContain("remove:ref-structure");
+    expect(objects.some((object) => object.id === "ref-structure")).toBe(true);
+  });
+
+  test("F3 converse: a MARKER set labelled like a structure survives the structure load", async () => {
+    const { studio, objects, events } = makeKindStudio([{ id: "ref-markers", label: "1abc", kind: "markers" }]);
+    await loadIntoStudio(studio as never, {
+      kind: "bytes",
+      path: "/data/1abc.pdb",
+      title: "1abc",
+      bytes: new TextEncoder().encode("ATOM"),
+      format: BIO_FORMATS.find((format) => format.id === "pdb"),
+      gzip: false,
+    } as never);
+    console.log(`[kind] after structure load: events=${JSON.stringify(events)}`);
+    expect(events).not.toContain("remove:ref-markers");
+    expect(objects.some((object) => object.id === "ref-markers")).toBe(true);
+  });
+
+  test("the EMDB route keys 'volume', so a volume is replaced and a structure is not", async () => {
+    const { studio, objects, events } = makeKindStudio([
+      { id: "ref-volume", label: "EMD-1234", kind: "volume" },
+      { id: "ref-structure", label: "EMD-1234", kind: "structure" },
+    ]);
+    await loadIntoStudio(studio as never, { kind: "structure", source: "emdb", id: "EMD-1234", title: "EMD-1234" } as never);
+    console.log(`[kind] emdb: events=${JSON.stringify(events)}`);
+    expect(events).toContain("remove:ref-volume");
+    expect(events).not.toContain("remove:ref-structure");
+    expect(objects.map((object) => object.id)).toEqual(["ref-structure"]);
+  });
+
+  test("a studio that reports NO kind still replaces by label (the deliberate fallback)", async () => {
+    // A studio too old to report `kind` must not stop replacing: removing
+    // nothing is the duplicate-stacking bug, which is worse than over-removing.
+    const { studio, objects, events } = makeKindStudio([{ id: "legacy", label: "sample" }]);
+    await loadIntoStudio(studio as never, bytesPayloadFor(BIO_FORMATS.find((format) => format.id === "pdb")) as never);
+    console.log(`[kind] fallback: events=${JSON.stringify(events)}, remaining=${objects.length}`);
+    // Reached only through the `object.kind === undefined` branch.
+    expect(events).toContain("remove:legacy");
+    expect(objects).toEqual([]);
+  });
+
+  test("the shared-label fix survives the new key: three sets still all get drawn", async () => {
+    const { studio, events } = makeKindStudio([{ id: "old", label: "markers", kind: "markers" }]);
+    await loadIntoStudio(studio as never, markerPayload([
+      markerSet("markers", 1),
+      markerSet("markers", 2),
+      markerSet("markers", 3),
+    ]) as never);
+    console.log(`[kind] shared-label: ${events.filter((event) => event === "load:markers").length} marker loads, removed=${JSON.stringify(events.filter((e) => e.startsWith("remove:")))}`);
+    expect(events.filter((event) => event === "load:markers")).toHaveLength(3);
+    expect(events.filter((event) => event.startsWith("remove:"))).toEqual(["remove:old"]);
   });
 });

@@ -59,3 +59,27 @@ describe("molstarFormat values against Mol*'s real reader registry", () => {
     }
   });
 });
+
+describe("@molstudio/core capability floor", () => {
+  /**
+   * Marker rendering is the reason this plugin depends on `@molstudio/core`
+   * `^0.1.4` rather than `^0.1.3`: the marker API simply does not exist in
+   * 0.1.3, and the failure mode of a downgrade is silent — `.cmm` files would
+   * throw at load time with nothing in the build or the types to warn you.
+   *
+   * Asserting the capability on the real class beats pinning a version string:
+   * it stays true if the API is ever renamed, and it fails the moment the
+   * installed package cannot draw markers.
+   */
+  test("the installed controller can load marker sets", async () => {
+    const core = (await import("@molstudio/core")) as unknown as {
+      MolStudio: { prototype: Record<string, unknown> };
+      MARKER_SIZE_RANGE?: unknown;
+    };
+    expect(typeof core.MolStudio.prototype["loadMarkers"]).toBe("function");
+    // The display controls the objects panel drives, present in the same release.
+    expect(typeof core.MolStudio.prototype["setMarkerColor"]).toBe("function");
+    expect(typeof core.MolStudio.prototype["setMarkerSize"]).toBe("function");
+    expect(core.MARKER_SIZE_RANGE).toBeDefined();
+  });
+});
