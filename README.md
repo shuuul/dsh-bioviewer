@@ -97,18 +97,24 @@ dsh plugin --profile web add dsh-better-sidebar@latest
 
 ## 开发
 
+本地与 CI 使用 Bun **1.4.4**（`packageManager` 与 `setup-bun` 均固定版本）。
+
 ```sh
 bun install
 bun run build        # lib/index.js（宿主半）+ lib/client.js（客户端半）
 bun run typecheck    # tsc --noEmit
 bun run lint         # oxlint
 bun test             # bun:test
-bun run verify:fast  # lint + typecheck + build + test —— 钩子与 CI 用的就是这条
+bun run check:specs  # 规格生命周期、编号与索引校验
+bun run verify:fast  # specs + lint + typecheck + build + test —— 钩子与 CI 用的就是这条
 ```
 
 `verify:fast` 就是 `.husky/pre-push` 与 CI 跑的同一件事；`pre-commit` 只对暂存文件跑 `oxlint`，`commit-msg` 强制 Conventional Commits。
 
 架构、本插件依赖的宿主契约，以及那些容易被重新引入的坑，都记在 [AGENTS.md](AGENTS.md) 里。
+跨仓库与并行工作的执行记录见 [规格索引](specs/README.md)；
+[历史验证入口](docs/VERIFICATION.md) 链接原始证据，不代表当前版本或未完成 UI 检查已通过。
+仅修改 Markdown/规格的 PR 也运行同一校验门禁。发布仍为手动流程，不添加发布自动化。
 
 ## 已知限制
 

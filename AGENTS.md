@@ -26,12 +26,40 @@ Mol\*.
 | `bun run typecheck` | `tsc -p tsconfig.json --noEmit` |
 | `bun run lint` | `oxlint --deny-warnings` — a warning fails the gate, not just the log |
 | `bun test` | `bun:test` suite |
-| `bun run verify:fast` | lint → typecheck → build → test. **The gate**: `.husky/pre-push` and CI both run exactly this |
+| `bun run check:specs` | Validate tracked spec structure, lifecycle, IDs and index |
+| `bun run verify:fast` | specs → lint → typecheck → build → test. **The gate**: `.husky/pre-push` and CI both run exactly this |
 | `bun run build --no-minify` | Unminified bundle, for reading the emitted code |
 
 Hooks: `pre-commit` runs `oxlint` on staged files (seconds, no tests);
 `pre-push` runs `verify:fast`; `commit-msg` enforces Conventional Commits.
 Do not add a second hook runner.
+
+## Tracked specs
+
+Use [specs/README.md](specs/README.md) for long-running, cross-repository or parallel
+work that needs explicit acceptance and handoff. Reserve the next continuous ID
+across `specs/` and `specs/archive/`, copy the template and index an Active spec
+before implementation/parallel work. Never reuse, renumber or delete an ID.
+
+The coordinator owns frontmatter, scope, shared decisions, index and closeout;
+workers claim stable workstream rows before editing and append dated handoffs.
+Only Draft/Active (in `specs/`) and Completed (in `specs/archive/`) are spec statuses;
+blocked work is a workstream state with evidence, owner and next action.
+
+Before closeout, satisfy or explicitly remove each acceptance criterion, sync
+durable behavior into code/tests/docs and the nearest guidance, record exact
+commands/results and any final experiment Git refs, and fill the completion summary.
+Run `bun run check:specs` and `bun test tests/specs.test.ts` before and after moving
+the same filename to `archive/` with Completed status and its index row in one change.
+Keep frontmatter flat scalar and the two index tables numerically ascending.
+
+`docs/VERIFICATION.md` points to historical evidence preserved byte-for-byte under
+`specs/archive/evidence/`; it is not current acceptance. Do not rewrite it or claim
+its unfinished browser/UI checks completed without fresh evidence in the active spec.
+The dependency-free validator runs from cwd, and regression fixtures execute the real
+script. CI must run the shared gate on Markdown/spec-only PRs too. Preserve Bun
+1.4.4 in packageManager/CI (update both deliberately) and the existing manual-only
+release policy; a spec-system change is not permission to add release automation.
 
 ## Architecture
 
@@ -141,7 +169,9 @@ These were read out of the installed `dsh-better-sidebar@0.28.2` and
      because the loaders name the object themselves (`loadPdb` uppercases the id,
      `loadEmdb` normalises to `EMD-1234`, `loadAlphaFoldDb` uses the API's
      `entryId`), so `structureLabels()` matches against every label MolStudio can
-     actually produce.
+     actually produce. AlphaFold matches existing labels in the exact
+     `AF-<accession>-` namespace as well as its fallback, never a guessed `F1`
+     suffix or an accession prefix without its separator.
    - **kind**: `StudioObject` is a discriminated union, and matching on the label
      alone would let a marker set called `markers` delete a structure that merely
      shares the name. The kind is per source, not per route — **`loadEmdb`
@@ -150,6 +180,12 @@ These were read out of the installed `dsh-better-sidebar@0.28.2` and
      as `"structure"` matches nothing on reload and silently restores the
      duplicate-stacking bug. When a studio cannot report a kind the match falls
      back to label-only, so it replaces rather than silently removing nothing.
+   Removal and load are serialized together per studio. Queued work uses its
+   effect's AbortSignal so superseded requests never start. Published core 0.1.4
+   batches snapshots on a timer, so the queue yields before reading them; a
+   resolved loader alone does not guarantee its objects are in that snapshot.
+   Database-tab payload identities must stay stable across theme/parent renders:
+   `BioViewer` intentionally uses a new payload identity as the file-reload signal.
 
 10. **`ctx.sidebarRight` is client-only, so an agent open needs a host route.**
     `@deepseek-ai/dsh-client-ui-sidebar-right`'s host half is literally

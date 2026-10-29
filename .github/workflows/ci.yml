@@ -3,9 +3,9 @@ name: CI
 # One cheap Linux job on pull requests. Hooks are the primary gate
 # (`.husky/pre-push` runs the same `verify:fast`), so there is deliberately no
 # `push` duplicate, no schedule and no OS/version matrix here.
+# Markdown-only PRs run too: the shared gate validates tracked specs.
 on:
   pull_request:
-    paths-ignore: ["**.md"]
   workflow_dispatch:
 
 permissions:
@@ -22,10 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
+          key: bun-1.4.4-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-1.4.4-${{ runner.os }}-
       - run: bun install --frozen-lockfile
-      - run: bun run verify:fast
+      - name: Check specs, lint, typecheck, build and test
+        run: bun run verify:fast

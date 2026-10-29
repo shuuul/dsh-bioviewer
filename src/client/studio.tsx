@@ -77,22 +77,21 @@ export function BioViewer({ payload, theme }: BioViewerProps): ReactElement {
 
   useEffect(() => {
     if (studio === null) return;
-    let cancelled = false;
+    const controller = new AbortController();
     const settling = attempt;
-    void loadIntoStudio(studio, payload).then(
+    void loadIntoStudio(studio, payload, controller.signal).then(
       () => {
-        if (!cancelled) setSettled({ studio, payload, attempt: settling, error: null });
+        if (!controller.signal.aborted) setSettled({ studio, payload, attempt: settling, error: null });
       },
       (cause: unknown) => {
-        if (!cancelled) setSettled({ studio, payload, attempt: settling, error: errorMessage(cause) });
+        if (!controller.signal.aborted) setSettled({ studio, payload, attempt: settling, error: errorMessage(cause) });
       },
     );
-    // Covers unmount, a payload swap, a replaced MolStudio instance and a
-    // retry: a run that no longer owns the viewer never writes its result into
-    // it. `<Studio>` owns the MolStudio lifecycle and disposes it itself; this
-    // component must never call `dispose()` on the handle it was given.
+    // Skip superseded queued work. An already-started Mol* load cannot be
+    // cancelled; the queue finishes it before the next replacement removes it.
+    // `<Studio>` owns disposal of the instance, not this component.
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [studio, payload, attempt]);
 

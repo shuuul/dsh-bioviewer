@@ -132,13 +132,16 @@ there is no host-side API that can push an open into the browser.
 
 ## Development
 
+Local development and CI use Bun **1.4.4**, pinned in `packageManager` and `setup-bun`.
+
 ```sh
 bun install
 bun run build        # lib/index.js (host half) + lib/client.js (client half)
 bun run typecheck    # tsc --noEmit
 bun run lint         # oxlint
 bun test             # bun:test
-bun run verify:fast  # lint + typecheck + build + test — the hook and CI gate
+bun run check:specs  # spec lifecycle, numbering and index validation
+bun run verify:fast  # specs + lint + typecheck + build + test — the hook and CI gate
 ```
 
 `verify:fast` is what `.husky/pre-push` and CI run; `pre-commit` runs `oxlint` on
@@ -146,6 +149,10 @@ staged files, and `commit-msg` enforces Conventional Commits.
 
 See [AGENTS.md](AGENTS.md) for the architecture, the host contracts this plugin
 depends on, and the gotchas that are easy to reintroduce.
+Cross-repository and parallel execution records live in the [spec index](specs/README.md).
+The [historical verification entry point](docs/VERIFICATION.md) links original evidence,
+not acceptance of the current version or completion of unfinished UI checks.
+Markdown/spec-only PRs run the same gate. Releases remain manual; no release automation is added.
 
 ## Limitations
 

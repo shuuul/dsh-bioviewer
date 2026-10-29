@@ -73,6 +73,9 @@ export interface StudioLike {
 /** One `TextDecoder` reused for every structure; `decode()` here is one-shot. */
 const TEXT_DECODER = new TextDecoder();
 
+/** Replacement includes removal AND loading; queuing only the loader would race removal. */
+const pendingLoads = new WeakMap<StudioLike, Promise<void>>();
+
 /**
  * Loads one payload into a Mol* studio.
  *
@@ -94,16 +97,29 @@ const TEXT_DECODER = new TextDecoder();
  * The label a byte payload loads under is `payload.title` — the object name the
  * user sees in Mol*'s list — and it is also the identity a reload replaces.
  */
-export async function loadIntoStudio(studio: StudioLike, payload: ViewerPayload): Promise<void> {
-  if (payload.kind === "structure") {
-    await loadDatabaseEntry(studio, payload);
-    return;
-  }
-  if (payload.kind === "markers") {
-    await loadMarkerSets(studio, payload);
-    return;
-  }
-  await loadByteFile(studio, payload);
+export function loadIntoStudio(studio: StudioLike, payload: ViewerPayload, signal?: AbortSignal): Promise<void> {
+  const previous = pendingLoads.get(studio) ?? Promise.resolve();
+  const next = previous.then(async () => {
+    // MolStudio 0.1.4 publishes hierarchy snapshots with setTimeout(0)
+    // (MolStudio.ts:187-195). Yield before reading the replacement snapshot,
+    // including after a failed load which may have left partial objects.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    signal?.throwIfAborted();
+    if (payload.kind === "structure") {
+      await loadDatabaseEntry(studio, payload);
+    } else if (payload.kind === "markers") {
+      await loadMarkerSets(studio, payload);
+    } else {
+      await loadByteFile(studio, payload);
+    }
+  });
+  // A failed or superseded request must not poison the next reload.
+  const settled = next.catch(() => {});
+  pendingLoads.set(studio, settled);
+  void settled.then(() => {
+    if (pendingLoads.get(studio) === settled) pendingLoads.delete(studio);
+  });
+  return next;
 }
 
 /** The `kind: "bytes"` route: format-driven, unchanged by the database work. */
@@ -146,7 +162,7 @@ async function loadDatabaseEntry(studio: StudioLike, payload: StructurePayload):
   const kind = payload.source === "emdb" ? "volume" : "structure";
   await removeObjectsMatching(
     studio,
-    structureLabels(payload).map((label) => ({ label, kind })),
+    structureLabels(studio, payload).map((label) => ({ label, kind })),
   );
   await load(payload.id);
 }
@@ -228,21 +244,26 @@ const LOADER_NAME = { pdb: "loadPdb", alphafold: "loadAlphaFoldDb", emdb: "loadE
  *   (`packages/core/src/MolStudio.ts:267-275`);
  * - `loadEmdb` produces a density-server label that MolStudio normalises to the
  *   uppercased id (`volumeName`, `packages/core/src/MolStudio.ts:375-380`);
- * - `loadAlphaFoldDb` labels the object with the entry id the API returns
- *   (`AF-P00533-F1`), which cannot be known before the fetch; the `AF-<ID>`
- *   fallback MolStudio uses when the API omits it is matched instead
- *   (`packages/core/src/MolStudio.ts:277-286`).
+ * - Published MolStudio 0.1.4 uses the AlphaFold API entry id (`AF-P00533-F1`)
+ *   or `AF-<ID>` as a fallback (MolStudio.ts:277-286). Read existing labels in
+ *   that accession's namespace instead of guessing a fragment/version suffix.
+ *   The trailing hyphen keeps a different accession from matching.
  *
  * Every candidate is a label MolStudio itself can produce for this payload, so
  * a match means "this object is the one being replaced", not a fuzzy guess.
  */
-function structureLabels(payload: StructurePayload): readonly string[] {
+function structureLabels(studio: StudioLike, payload: StructurePayload): readonly string[] {
   const id = payload.id.trim();
   switch (payload.source) {
     case "pdb":
       return [payload.title, id.toUpperCase()];
-    case "alphafold":
-      return [payload.title, `AF-${id.toUpperCase()}`];
+    case "alphafold": {
+      const label = `AF-${id.toUpperCase()}`;
+      const entries = studio.getSnapshot?.().objects
+        .filter((object) => object.label.startsWith(`${label}-`))
+        .map((object) => object.label) ?? [];
+      return [payload.title, label, ...entries];
+    }
     case "emdb":
       return [payload.title, normalizeEmdbLabel(id)];
   }

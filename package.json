@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "View biomolecular structures, cryo-EM maps and small molecules from the filesystem inside DeepSeek Harness.",
   "type": "module",
+  "packageManager": "bun@1.4.4",
   "license": "MIT",
   "icon": "icon.svg",
   "main": "lib/index.js",
@@ -44,7 +45,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "oxlint --deny-warnings",
     "test": "bun test",
-    "verify:fast": "bun run lint && bun run typecheck && bun run build && bun test",
+    "check:specs": "bun scripts/check-specs.mjs",
+    "verify:fast": "bun run check:specs && bun run lint && bun run typecheck && bun run build && bun test",
     "verify": "bun run verify:fast",
     "prepare": "husky"
   },
@@ -78,10 +80,12 @@
     "@types/bun": "^1.4.4",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "@types/react-test-renderer": "18.3.1",
     "dsh-better-sidebar": "^0.28.2",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
     "oxlint": "^1.89.0",
+    "react-test-renderer": "18.3.1",
     "typescript": "~5.9.3"
   },
   "lint-staged": {

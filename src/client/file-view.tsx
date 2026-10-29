@@ -11,7 +11,7 @@
  * Marker models used to need a special pane here; now that `@molstudio/core`
  * owns marker rendering they are an ordinary payload.
  */
-import { createElement, type ReactNode } from "react";
+import { createElement, useMemo, type ReactNode } from "react";
 import { parseOpenTarget, structureTitle } from "../shared/opens";
 import type { ViewerPayload } from "./payload";
 import { BioViewer } from "./studio";
@@ -60,10 +60,15 @@ export function BioFileView(props: BioFileViewProps): ReactNode {
  */
 export function StructureTabView(props: { readonly path: string | undefined }): ReactNode {
   const theme = useViewerTheme();
-  const parsed =
-    props.path === undefined
+  // A payload identity is a reload signal; a theme/parent render is not.
+  const parsed = useMemo(() => {
+    const target = props.path === undefined
       ? { kind: "invalid" as const, reason: "the tab has no address" }
       : parseOpenTarget(props.path);
+    return target.kind === "structure"
+      ? { ...target, title: structureTitle(target.source, target.id) }
+      : target;
+  }, [props.path]);
   if (parsed.kind !== "structure") {
     return createElement(BioNotice, {
       title: "Unknown structure",
@@ -74,12 +79,7 @@ export function StructureTabView(props: { readonly path: string | undefined }): 
     });
   }
   return createElement(BioViewer, {
-    payload: {
-      kind: "structure",
-      source: parsed.source,
-      id: parsed.id,
-      title: structureTitle(parsed.source, parsed.id),
-    },
+    payload: parsed,
     theme,
   });
 }

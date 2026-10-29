@@ -307,6 +307,65 @@ describe("loadIntoStudio routing", () => {
 describe("loadIntoStudio database structures", () => {
   const SOURCES: readonly StructureSource[] = ["pdb", "alphafold", "emdb"];
 
+  test("replaces the actual AlphaFold entry, preserving another accession and kind", async () => {
+    const studio = new FakeStudio({ library: [
+      { id: "other", label: "AF-P00533-F10", kind: "markers" },
+      { id: "different", label: "AF-P00534-F1", kind: "structure" },
+    ] });
+    let next = 0;
+    studio.loadAlphaFoldDb = async () => {
+      studio.library.push({ id: `af-${++next}`, label: "AF-P00533-F1", kind: "structure" });
+    };
+    await loadIntoStudio(studio, structurePayload("alphafold", "P00533"));
+    await loadIntoStudio(studio, structurePayload("alphafold", "P00533"));
+    expect(studio.library).toEqual([
+      { id: "other", label: "AF-P00533-F10", kind: "markers" },
+      { id: "different", label: "AF-P00534-F1", kind: "structure" },
+      { id: "af-2", label: "AF-P00533-F1", kind: "structure" },
+    ]);
+  });
+
+  test("overlapping reloads replace after the earlier load has finished", async () => {
+    const studio = new FakeStudio();
+    let published: readonly StudioObjectSummary[] = [];
+    studio.getSnapshot = () => ({ objects: published });
+    let release!: () => void;
+    let started!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const beginning = new Promise<void>((resolve) => { started = resolve; });
+    let next = 0;
+    studio.loadPdb = async () => {
+      const id = ++next;
+      if (id === 1) { started(); await pending; }
+      studio.library.push({ id: `pdb-${id}`, label: "1CBS", kind: "structure" });
+      // Published core 0.1.4 batches its snapshot until the next timer turn.
+      setTimeout(() => { published = [...studio.library]; }, 0);
+    };
+    const payload = structurePayload("pdb", "1CBS");
+    const first = loadIntoStudio(studio, payload);
+    await beginning;
+    const second = loadIntoStudio(studio, payload);
+    release();
+    await Promise.all([first, second]);
+    expect(studio.library).toEqual([{ id: "pdb-2", label: "1CBS", kind: "structure" }]);
+  });
+
+  test("superseded queued loads do not run and a failure does not poison the queue", async () => {
+    const studio = new FakeStudio();
+    const controller = new AbortController();
+    const skipped = loadIntoStudio(studio, structurePayload("pdb", "1CBS"), controller.signal);
+    controller.abort();
+    await expect(skipped).rejects.toThrow();
+    expect(studio.library).toEqual([]);
+    studio.loadPdb = async () => { throw new Error("download failed"); };
+    await expect(loadIntoStudio(studio, structurePayload("pdb", "1CBS"))).rejects.toThrow("download failed");
+    studio.loadPdb = async () => {
+      studio.library.push({ id: "recovered", label: "1CBS", kind: "structure" });
+    };
+    await loadIntoStudio(studio, structurePayload("pdb", "1CBS"));
+    expect(studio.library).toEqual([{ id: "recovered", label: "1CBS", kind: "structure" }]);
+  });
+
   test("routes each source to its own loader and nothing else", async () => {
     for (const source of SOURCES) {
       const studio = new FakeStudio();
