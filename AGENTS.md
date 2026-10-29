@@ -139,6 +139,12 @@ These were read out of the installed `dsh-better-sidebar@0.28.2` and
   measurements (`extOf` output, `builtinViewers` contents) that cost real time to
   establish.
 - Conventional Commits are required (`feat`, `fix`, `docs`, `test`, `chore`, …).
+- **`README.md` is Chinese; `README_EN.md` is its English mirror.** Chinese is the
+  primary, so a change lands in `README.md` first and `README_EN.md` follows in the
+  same commit. They must link to each other, and `tests/readme.test.ts` fails if
+  either one stops documenting an extension or a Mol\* reader the format table
+  claims, or if the two grow a different number of `##` sections. Add new sections
+  to both.
 - Add a test next to any behaviour you fix. The suite is fast (~2 s) and is the
   only regression net for the routing rules above.
 
@@ -168,7 +174,7 @@ sequence is:
 2. Bump `version` in `package.json` and commit it (`chore(release): vX.Y.Z`).
 3. Tag and push: `git tag vX.Y.Z && git push origin main --tags`.
 4. `npm publish` (the `files` list already ships `lib`, `src`, `cordis.patch.yml`,
-   `icon.svg`, `locale/*.json`, `README.md` and `LICENSE`).
+   `icon.svg`, `locale/*.json`, `README.md`, `README_EN.md` and `LICENSE`).
 5. Consumers install with `dsh plugin --profile <name> add dsh-bioviewer@X.Y.Z`.
 
 Two constraints to preserve if automation is ever added: release workflows must

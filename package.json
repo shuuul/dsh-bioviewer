@@ -36,6 +36,7 @@
     "icon.svg",
     "locale/*.json",
     "README.md",
+    "README_EN.md",
     "LICENSE"
   ],
   "scripts": {

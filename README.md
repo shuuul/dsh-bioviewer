@@ -1,74 +1,63 @@
 # dsh-bioviewer
 
-View biomolecular structures, cryo-EM density maps and small molecules from the
-filesystem inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
+[English](README_EN.md) · **中文**
 
-It is a DSH plugin: it registers file viewers for structural-biology formats with
-[`dsh-better-sidebar`](https://github.com/omdsh-dev/DSH-better-sidebar), so opening
-a `.pdb`, `.cif` or `.mrc` in the sidebar renders it in 3D with
-[Mol\*](https://molstar.org) through [`@molstudio/react`](https://www.npmjs.com/package/@molstudio/react) —
-the same viewer stack as the
-[BioViewer VS Code extension](https://github.com/shuuul/bioviewer).
+在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的侧边栏里，直接查看文件系统中的生物大分子结构、冷冻电镜密度图与小分子。
 
-## Features
+这是一个 DSH 插件：它向第三方插件 [`dsh-better-sidebar`](https://github.com/omdsh-dev/DSH-better-sidebar) 注册结构生物学格式的文件预览器，因此在侧边栏打开 `.pdb`、`.cif` 或 `.mrc` 时，会用 [Mol\*](https://molstar.org)（经 [`@molstudio/react`](https://www.npmjs.com/package/@molstudio/react)）以 3D 渲染——与 [BioViewer VS Code 扩展](https://github.com/shuuul/bioviewer) 使用同一套 viewer 栈。
 
-- **Structures** — PDB and mmCIF, with MolStudio's objects list and per-object
-  representation, colour scheme, opacity and focus controls.
-- **Density maps** — MRC / MAP / CCP4 volumes with the contour control and the
-  density histogram.
-- **Small molecules** — SDF, MOL, MOL2, PDBQT, GRO and XYZ.
-- **Compressed files** — every format above also works with a trailing `.gz`;
-  the file stays compressed on the wire and is inflated in the browser.
-- **A workspace browser** — a "BioViewer" sidebar tab lists the bio files in the
-  session working directory, so you can find them without leaving the sidebar.
-- **Follows the shell** — the viewer tracks the DSH light/dark scheme and uses
-  DSH design tokens, so every skin applies without per-skin work.
-- **Live reload** — when the model rewrites a file you are looking at, the view
-  reloads itself and replaces the old object instead of stacking a duplicate.
+## 功能
 
-## Supported formats
+- **结构** —— PDB 与 mmCIF，带 MolStudio 的对象列表，以及按对象的表示方式、配色方案、不透明度与聚焦控制。
+- **密度图** —— MRC / MAP / CCP4 体数据，带等值面控制与密度直方图。
+- **小分子** —— SDF、MOL、MOL2、PDBQT、GRO 与 XYZ。
+- **压缩文件** —— 上述所有格式都支持 `.gz` 后缀；文件在传输时保持压缩，在浏览器中解压。
+- **工作区浏览器** —— 一个「BioViewer」侧边栏 tab，列出会话工作目录下的生物文件，不用离开侧边栏就能找到它们。
+- **跟随宿主** —— viewer 跟随 DSH 的明暗主题，并使用 DSH 设计令牌，因此所有皮肤都无需逐个适配。
+- **实时重载** —— 当你正在查看的文件被模型改写时，视图会自行重载，并**替换**旧对象，而不是叠加一个重复项。
 
-| Kind | Extensions | Mol\* reader |
+## 支持的格式
+
+| 类别 | 扩展名 | Mol\* reader |
 | --- | --- | --- |
-| Structure | `pdb` `ent` | `pdb` |
-| Structure | `cif` `mmcif` `mcif` | `mmcif` |
-| Volume | `mrc` `map` `ccp4` | `ccp4` |
-| Molecule | `sdf` `sd` | `sdf` |
-| Molecule | `mol` | `mol` |
-| Molecule | `mol2` | `mol2` |
-| Molecule | `pdbqt` | `pdbqt` |
-| Molecule | `gro` | `gro` |
-| Molecule | `xyz` | `xyz` |
-| Marker model | `cmm` | recognised, parsed, **not drawn** — see [Limitations](#limitations) |
+| 结构 | `pdb` `ent` | `pdb` |
+| 结构 | `cif` `mmcif` `mcif` | `mmcif` |
+| 体数据 | `mrc` `map` `ccp4` | `ccp4` |
+| 小分子 | `sdf` `sd` | `sdf` |
+| 小分子 | `mol` | `mol` |
+| 小分子 | `mol2` | `mol2` |
+| 小分子 | `pdbqt` | `pdbqt` |
+| 小分子 | `gro` | `gro` |
+| 小分子 | `xyz` | `xyz` |
+| 标记模型 | `cmm` | 能识别、能解析，**但不绘制** —— 见[已知限制](#已知限制) |
 
-Every extension also works with a `.gz` suffix (`1abc.pdb.gz`, `map.mrc.gz`, …).
+每个扩展名也都支持 `.gz` 后缀（`1abc.pdb.gz`、`map.mrc.gz` 等）。
 
-## Install
+## 安装
 
-The plugin is not published yet, so install it from a checkout.
+插件尚未发布到 npm，因此从本地检出安装。
 
-**With the DSH CLI** (once published):
+**用 DSH CLI**（发布之后）：
 
 ```sh
 dsh plugin --profile web add dsh-bioviewer
 ```
 
-**From a local checkout**, mount it into a profile:
+**从本地检出安装**，把插件挂进某个 profile：
 
 ```sh
 bun install && bun run build
 ```
 
-Then, in `~/.dsh/profiles/<profile>/`:
+然后在 `~/.dsh/profiles/<profile>/` 下：
 
-1. add the plugin to `package.json`:
+1. 把插件加进 `package.json`：
 
    ```json
    { "dependencies": { "dsh-bioviewer": "link:/absolute/path/to/dsh-bioviewer" } }
    ```
 
-2. add the mount row to `cordis.patch.yml` (or rely on `dsh.bundle.patch`, which
-   the official CLI uses):
+2. 往 `cordis.patch.yml` 加挂载行（或者直接依赖 `dsh.bundle.patch`，官方 CLI 走的就是这条路）：
 
    ```yaml
    - insert:
@@ -76,57 +65,41 @@ Then, in `~/.dsh/profiles/<profile>/`:
          name: 'dsh-bioviewer'
    ```
 
-3. `pnpm install` in the profile directory, then hard-refresh the browser
-   (Cmd/Ctrl+Shift+R).
+3. 在 profile 目录里执行 `pnpm install`，然后硬刷新浏览器（Cmd/Ctrl+Shift+R）。
 
-`dsh-better-sidebar` is **optional**: without it the plugin loads and does
-nothing. Install it to get the viewers:
+`dsh-better-sidebar` 是**可选**依赖：没有它，插件照常加载，但什么都不做。要看到 viewer，请安装它：
 
 ```sh
 dsh plugin --profile web add dsh-better-sidebar@latest
 ```
 
-## Usage
+## 使用
 
-- **From the sidebar** — open the "BioViewer" tab (`+` menu) to list the bio
-  files under the session working directory, then click one. Or open any
-  supported file through the host's file tree or a chat link; the registered
-  viewer takes over the editor pane.
-- **Compressed files** — `.gz` files are routed by content sniffing, so they work
-  the same way as their uncompressed counterparts.
+- **从侧边栏** —— 在 `+` 菜单里打开「BioViewer」tab，列出会话工作目录下的生物文件，然后点一个。或者通过宿主的文件树、聊天里的链接打开任意受支持的文件，注册的 viewer 会接管编辑区。
+- **压缩文件** —— `.gz` 文件通过内容嗅探路由，用起来和未压缩版本完全一样。
 
-## Development
+## 开发
 
 ```sh
 bun install
-bun run build        # lib/index.js (host half) + lib/client.js (client half)
+bun run build        # lib/index.js（宿主半）+ lib/client.js（客户端半）
 bun run typecheck    # tsc --noEmit
 bun run lint         # oxlint
 bun test             # bun:test
-bun run verify:fast  # lint + typecheck + build + test — the hook and CI gate
+bun run verify:fast  # lint + typecheck + build + test —— 钩子与 CI 用的就是这条
 ```
 
-`verify:fast` is what `.husky/pre-push` and CI run; `pre-commit` runs `oxlint` on
-staged files, and `commit-msg` enforces Conventional Commits.
+`verify:fast` 就是 `.husky/pre-push` 与 CI 跑的同一件事；`pre-commit` 只对暂存文件跑 `oxlint`，`commit-msg` 强制 Conventional Commits。
 
-See [AGENTS.md](AGENTS.md) for the architecture, the host contracts this plugin
-depends on, and the gotchas that are easy to reintroduce.
+架构、本插件依赖的宿主契约，以及那些容易被重新引入的坑，都记在 [AGENTS.md](AGENTS.md) 里。
 
-## Limitations
+## 已知限制
 
-- **Marker models (`.cmm`) are not drawn.** Mol\* 5.13 exposes no public shape
-  builder (`PluginContext.builders` has only `data`, `structure` and `preset`),
-  so rendering spheres and links would mean reaching into the state tree. The
-  file is recognised, listed and parsed, and the viewer reports the marker-set
-  name, marker count and link count instead of showing an empty viewport. The
-  fix is a shape-builder-backed renderer once Mol\* exposes one, or a
-  synthesised-structure bridge.
-- **Binary CIF (`.bcif`) is not supported** — it is not in Mol\*'s built-in
-  trajectory format list.
-- The workspace browser lists one directory level at a time; there is no
-  cross-workspace index.
-- The viewer UI is English-only.
+- **不绘制标记模型（`.cmm`）。** Mol\* 5.13 没有公开的 shape builder（`PluginContext.builders` 只有 `data`、`structure` 和 `preset`），要画球和连线就得直接操作 state tree。插件能识别、能列出、能解析这类文件，viewer 会报告 marker set 名称、marker 数与 link 数，而不是给你一个空视口。等 Mol\* 提供 shape builder，或者做一层「合成结构」桥接，才能真正画出来。
+- **不支持 Binary CIF（`.bcif`）** —— 它不在 Mol\* 内置的 trajectory 格式列表里。
+- 工作区浏览器一次只列一层目录，没有跨工作区的索引。
+- viewer 界面目前只有英文。
 
-## License
+## 许可证
 
 MIT
