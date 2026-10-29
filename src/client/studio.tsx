@@ -1,13 +1,20 @@
 /**
  * The Mol* viewer surface of dsh-bioviewer.
  *
- * `<BioViewer>` is a *pure renderer*: the file has already been fetched by the
- * file-viewer descriptor's `load()` (better-sidebar's `fetchStrategy: 'custom'`
- * hands the resolved value to the component as `customData`), so this module
- * never fetches, never sees a session or a route, and has no opinion about
- * where the bytes came from. That split is what makes the host's `AbortSignal`
- * and its automatic reload-after-write work: both live on the descriptor side,
- * and a new payload object identity is the component's only reload signal.
+ * `<BioViewer>` is a *pure renderer*: the payload has already been resolved by
+ * the file-viewer descriptor's `load()` (better-sidebar's `fetchStrategy:
+ * 'custom'` hands the resolved value to the component as `customData`), so this
+ * module never fetches, never sees a session or a route, and has no opinion
+ * about where the bytes came from. That split is what makes the host's
+ * `AbortSignal` and its automatic reload-after-write work: both live on the
+ * descriptor side, and a new payload object identity is the component's only
+ * reload signal.
+ *
+ * A payload is either local bytes or a database entry (`pdb:` / `alphafold:` /
+ * `emdb:`). The second kind has no bytes at all: `loadIntoStudio` hands the
+ * accession to MolStudio's own loader, which does the network fetch, so the
+ * loading state below covers a slow or failing download and always names the
+ * entry being fetched.
  *
  * Layout contract: the DSH native tab body is a *fixed-height block scroller*,
  * not a flex container (see the better-sidebar external-plugin guide, "原生 tab
@@ -28,11 +35,11 @@ import type { MolStudio } from "@molstudio/core";
 import { CloseIcon, ErrorIcon, RetryIcon, SpinnerIcon } from "./icons";
 import { loadIntoStudio } from "./load";
 import type { StudioLike } from "./load";
-import type { BioViewerPayload } from "./payload";
+import type { StructurePayload, ViewerPayload } from "./payload";
 
 export interface BioViewerProps {
-  /** The file to display, already fetched and format-detected by the descriptor. */
-  payload: BioViewerPayload;
+  /** The file or database entry to display, already resolved by the descriptor. */
+  payload: ViewerPayload;
   /** Resolved by the host from DSH tokens (`src/client/theme.ts`). */
   theme: "light" | "dark";
 }
@@ -42,20 +49,22 @@ type LoadStatus = "loading" | "ready" | "error";
 /** One settled load attempt: which studio, which payload, which retry. */
 interface LoadAttempt {
   readonly studio: StudioLike;
-  readonly payload: BioViewerPayload;
+  readonly payload: ViewerPayload;
   readonly attempt: number;
   /** `null` when the load succeeded. */
   readonly error: string | null;
 }
 
 /**
- * Renders one bio file through Mol*.
+ * Renders one payload — a local file or a database entry — through Mol*.
  *
- * Mounting (and every new `payload` identity) loads the file into the studio
- * that `<Studio>` reports through `onReady`. A rejected load is shown as an
- * explicit panel with a retry button — the pane is never blank, because a
- * silently empty canvas is indistinguishable from a viewer that is still
- * working.
+ * Mounting (and every new `payload` identity) loads it into the studio that
+ * `<Studio>` reports through `onReady`. A rejected load is shown as an explicit
+ * panel with a retry button — the pane is never blank, because a silently empty
+ * canvas is indistinguishable from a viewer that is still working. A database
+ * payload adds a network fetch behind that same panel, so the panel names the
+ * accession while it is in flight and shows the loader's own message when the
+ * entry does not exist or the network is down.
  */
 export function BioViewer({ payload, theme }: BioViewerProps): ReactElement {
   const [studio, setStudio] = useState<StudioLike | null>(null);
@@ -69,7 +78,7 @@ export function BioViewer({ payload, theme }: BioViewerProps): ReactElement {
     if (studio === null) return;
     let cancelled = false;
     const settling = attempt;
-    void loadIntoStudio(studio, { bytes: payload.bytes, format: payload.format, label: payload.title }).then(
+    void loadIntoStudio(studio, payload).then(
       () => {
         if (!cancelled) setSettled({ studio, payload, attempt: settling, error: null });
       },
@@ -114,7 +123,7 @@ export function BioViewer({ payload, theme }: BioViewerProps): ReactElement {
       <StatusCard tone="error" title={`Could not display ${payload.title}`} detail={error} onRetry={retry} />
     );
   } else if (status === "loading") {
-    overlay = <StatusCard busy title={`Loading ${payload.title}…`} detail={payload.format.label} />;
+    overlay = <StatusCard busy title={`Loading ${payload.title}…`} detail={loadingDetail(payload)} />;
   }
 
   return (
@@ -175,6 +184,29 @@ function StatusCard({
       )}
     </div>
   );
+}
+
+/**
+ * What the loading card says under the title.
+ *
+ * A database entry is a network fetch that can take seconds and can fail, so
+ * the detail line always names the entry being fetched — a bare spinner would
+ * leave the user unable to tell which accession is in flight.
+ */
+function loadingDetail(payload: ViewerPayload): string {
+  return payload.kind === "bytes" ? payload.format.label : structureLoadingDetail(payload);
+}
+
+function structureLoadingDetail(payload: StructurePayload): string {
+  const { id } = payload;
+  switch (payload.source) {
+    case "pdb":
+      return `Downloading ${id} from the PDB archive.`;
+    case "alphafold":
+      return `Downloading prediction ${id} from AlphaFold DB.`;
+    case "emdb":
+      return `Downloading map ${id} from EMDB (author-recommended contour).`;
+  }
 }
 
 /** Error text for anything a promise can reject with. */

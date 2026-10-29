@@ -44,25 +44,42 @@ flowchart TD
   load["load(path, scope, signal)"]
   route["GET sidebar/file?sessionId&path"]
   gunzip["gunzip() via DecompressionStream"]
-  payload["BioViewerPayload"]
+  payload["ViewerPayload (bytes | structure)"]
   viewer["BioViewer → &lt;Studio&gt;"]
-  molstudio["MolStudio (loadStructure / loadVolume)"]
+  molstudio["MolStudio (loadStructure / loadVolume / loadPdb / loadAlphaFoldDb / loadEmdb)"]
   molstar["Mol*"]
 
+  model["model calls bio_open"]
+  tool["src/host/tool.ts"]
+  registry["src/host/registry.ts (per-session queue)"]
+  poll["src/client/agent-opens.ts long-polls GET bioviewer/open"]
+
   user --> sidebar --> matcher --> descriptor --> load --> route --> gunzip --> payload --> viewer --> molstudio --> molstar
+  model --> tool --> registry --> poll --> viewer
 ```
+
+Note the two independent entry points into the same viewer: a user clicking a
+file goes through better-sidebar's matcher and our `load()`, while an agent open
+goes through the tool and the poll loop. Both end at `BioViewer`.
 
 | Path | Role |
 | --- | --- |
-| `src/index.ts` | **Host half.** Intentionally minimal: it exists so the loader can mount the plugin and discover the client half. All behaviour is client-side. |
-| `src/client/index.tsx` | **Client half entry.** Registers the viewers, the compressed-file sniffer and the browser tab. Owns stylesheet injection and the host-route resolver. |
+| `src/index.ts` | **Host half.** Owns the `bio_open` tool and its long-poll route; also the loader row that makes the client half discoverable. |
+| `src/host/tool.ts` | The `bio_open` tool: resolves the calling session and cwd, maps the target, queues it. |
+| `src/host/target.ts` | Pure target → `OpenRequest` mapping (no cordis, no DSH imports, so it tests alone). |
+| `src/host/registry.ts` | Per-session open queue + parked long-poll waiters (consume-once, bounded). |
+| `src/host/route.ts` | The fenced `GET /bioviewer/open` long poll. |
+| `src/client/index.tsx` | **Client half entry.** Registers the viewers, the compressed-file sniffer and both tabs. Owns stylesheet injection and the host-route resolver. |
+| `src/client/agent-opens.ts` | The poll loop that receives agent opens and dispatches them. |
+| `src/client/transport.ts` | Prefix-safe URL resolution for this plugin's own host routes. |
 | `src/shared/formats.ts` | Pure format table + `detectBioFile` / `isBioFile`. Zero imports. |
+| `src/shared/opens.ts` | The agent-open wire contract (`OpenRequest`, `parseOpenTarget`, …). Shared by both halves. |
 | `src/client/bytes.ts` | Fetches raw bytes from the host media route and gunzips them. |
-| `src/client/load.ts` | `loadIntoStudio`: routes a payload to `loadStructure`/`loadVolume`, and replaces a same-label object instead of stacking a duplicate. |
-| `src/client/studio.tsx` | `BioViewer`: pure renderer of an already-fetched payload. |
+| `src/client/load.ts` | `loadIntoStudio`: routes a payload to `loadStructure`/`loadVolume`/`loadPdb`/…, and replaces a same-label object instead of stacking a duplicate. |
+| `src/client/studio.tsx` | `BioViewer`: pure renderer of an already-fetched payload (bytes or a database entry). |
 | `src/client/browser.tsx` | The "BioViewer" tab page (workspace bio-file navigator). |
 | `src/client/cmm.ts` | Pure `.cmm` parser (React-free). The marker pane component is `MarkerNotice` in `file-view.tsx`. |
-| `src/client/file-view.tsx` | The viewer's leaf components (`BioFileView`, `BioPayloadView`, `MarkerNotice`, `BioNotice`) and the payload dispatcher. |
+| `src/client/file-view.tsx` | The viewer's leaf components (`BioFileView`, `BioPayloadView`, `StructureTabView`, `MarkerNotice`, `BioNotice`) and the payload dispatcher. |
 | `src/client/theme.ts` | DSH colour-scheme detection (mirrors the host's own logic). |
 | `scripts/build.ts` | The build. Produces both halves and the `__ModuleLoader__` wrapper. |
 
@@ -119,7 +136,68 @@ These were read out of the installed `dsh-better-sidebar@0.28.2` and
 9. **Reload replaces, it does not append.** `MolStudio.loadStructure` has no
    dedupe, so a naive reload stacks a second object with the same label.
    `loadIntoStudio` removes same-label objects first via the public
-   `getSnapshot()` / `remove(id)`.
+   `getSnapshot()` / `remove(id)`. For database entries the key cannot be the
+   payload title alone: the loaders name the object themselves (`loadPdb`
+   uppercases the id, `loadEmdb` normalises to `EMD-1234`, `loadAlphaFoldDb` uses
+   the API's `entryId`), so `load.ts` matches against every label MolStudio can
+   actually produce for that payload.
+
+10. **`ctx.sidebarRight` is client-only, so an agent open needs a host route.**
+    `@deepseek-ai/dsh-client-ui-sidebar-right`'s host half is literally
+    `export declare function apply(): void` — "the Sidebar contributes nothing to
+    the host tree". There is therefore **no host-side API** that pushes an open
+    into the browser, which is why `bio_open` exists: the tool queues a request
+    (`src/host/registry.ts`), the client long-polls it back
+    (`GET /bioviewer/open`), and the client calls `ctx.betterSidebar.openFile` /
+    `openTab`. Do not "simplify" this into a host-side sidebar call; there isn't
+    one. Two consequences worth remembering: the poll is **consume-once**, so a
+    request reaches exactly one client (same guarantee better-sidebar's
+    agent-open socket gives), and `apply()` must never throw on a partial service
+    — `registerAll` capability-checks `getSnapshot`/`subscribeState` and degrades
+    to "agent opens disabled" rather than taking the viewers down with it.
+
+11. **Never read a host service with `ctx.get` at `apply()` time.** This plugin's
+    activation is **not** ordered after the services it uses, and the race is
+    silent: `apply()` ran before the webserver was provided, `ctx.get("webServer")`
+    returned `undefined`, both host registrations took their documented
+    "degrade to a no-op + log" path, and the plugin *looked* mounted while
+    `/bioviewer/open` answered the server's generic 404 with no `content-type`.
+    Nothing threw and no test failed — a fake ctx whose `get` always answers
+    cannot see this. Use `ctx.inject([...], (scoped) => scoped.effect(...))`
+    instead: registration happens the moment the services exist, the UI half is
+    still not gated (a static `inject` would block the whole plugin), and a host
+    that never provides them never registers. `tests/host-tool.test.ts` models the
+    real ordering (`inject: "now" | "manual" | "never"`) and pins the dep list.
+    Only a live `dsh --profile web` run caught this, so re-run the host check in
+    "Verifying on a real host" below after touching `src/index.ts`.
+
+## Verifying on a real host
+
+Unit tests with a fake ctx cannot see ordering, activation or HTTP behaviour.
+The cheap end-to-end check uses a **throwaway** `DSH_HOME` so the user's
+`~/.dsh` is never touched:
+
+```sh
+export DSH_HOME=/tmp/dsh-verify && mkdir -p "$DSH_HOME"
+dsh plugin --profile web add "link:$PWD"        # auto-appends from dsh.bundle.patch
+dsh plugin --profile web add dsh-better-sidebar@0.28.2
+dsh --profile web --dump-config | grep -A2 dsh-bioviewer   # row composed?
+dsh --profile web --no-open --port 59391        # background job; read the token URL
+```
+
+Then, with the token exchanged for a cookie:
+
+| Probe | Expected |
+| --- | --- |
+| `GET /` | 200; `window.__DSH_BOOT__` contains a `dsh-bioviewer` row |
+| `GET /plugins/??dsh-bioviewer/client.js&rev=…` | 200, `text/javascript`, ~3.3 MB |
+| `GET /bioviewer/open?sessionId=x` (no cookie) | **403 with our JSON body** — a bare 404 means the route never registered |
+| `GET /bioviewer/open?sessionId=x` (cookie) | held **25 s**, then `200 {"ok":true,"value":{"request":null}}` |
+| `GET /bioviewer/open` (no sessionId) | `400` `bad-request` |
+
+Kill the job afterwards, delete the temp home, and confirm the user's own GUI is
+untouched. Booting a *replacement* server for the user's GUI is never the goal —
+this one exists only to exercise the host half and is torn down immediately.
 
 ## Conventions
 
@@ -163,6 +241,15 @@ These were read out of the installed `dsh-better-sidebar@0.28.2` and
 - `tests/molstar-formats.test.ts` asserts every `molstarFormat` in the table is a
   member of Mol\*'s real built-in reader registry. `tsc` cannot check those
   strings, and a wrong one only fails when a user opens a file.
+- `tests/agent-opens.test.ts` drives the poll loop with a scripted `fetch`. Its
+  `fetchScript` double **must forward `init`** to the scripted answer: a "parked"
+  answer only ever settles through the abort signal it is handed, so dropping it
+  hangs the loop forever and the test never finishes. Every loop test also carries
+  a hard 5 s timeout for the same reason.
+- `tests/host-registry.test.ts` covers the queue semantics, including the race
+  where a waiter's timeout already fired but its `finally` has not run yet — the
+  request must be **queued**, not handed to that dead waiter (`delivered: true`
+  with a lost open is the failure mode this feature must never have).
 
 ## Releasing
 

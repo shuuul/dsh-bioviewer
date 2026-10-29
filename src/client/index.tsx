@@ -31,12 +31,13 @@ import studioStyles from "@molstudio/react/styles.css";
 import noticeStyles from "./notices.css";
 
 import { BIO_FORMATS, detectBioFile, type BioFormat } from "../shared/formats";
+import { startAgentOpens, STRUCTURE_TAB_ID } from "./agent-opens";
 import { fetchBioBytes } from "./bytes";
 import { BioBrowser } from "./browser";
 import { parseCmm, type MarkerPayload } from "./cmm";
-import { BioFileView, BioPayloadView, MarkerNotice } from "./file-view";
+import { BioFileView, BioPayloadView, MarkerNotice, StructureTabView } from "./file-view";
 import { BioViewerIcon } from "./icons";
-import type { BioViewerPayload } from "./payload";
+import type { BioViewerPayload, ViewerPayload } from "./payload";
 
 /**
  * No hard service dependency: better-sidebar is an *optional* peer, so the
@@ -63,6 +64,13 @@ const GZIP_VIEWER_PRIORITY = 10;
  * inject nothing. `tests/style-ids.test.ts` pins the uniqueness.
  */
 const STYLE_ELEMENT_ID = "dsh-bioviewer-core-styles";
+
+/**
+ * Mints the per-tab id for the structure tab. Tab ids only have to be unique
+ * within one session's sidebar state, so a monotonic counter is enough; it never
+ * needs to survive a reload (a reopened tab gets a fresh id).
+ */
+let structureTabSeq = 0;
 
 /**
  * Inline the stylesheets this plugin needs. The bundle is one script with no
@@ -132,7 +140,7 @@ async function loadBioPayload(
 ): Promise<BioViewerPayload> {
   const format = detectBioFile(path)?.format ?? fallback;
   const { bytes, gzip } = await readBytes(ctx, path, scope, signal);
-  return { path, title: baseName(path), format, bytes, gzip };
+  return { kind: "bytes", path, title: baseName(path), format, bytes, gzip };
 }
 
 /**
@@ -189,7 +197,7 @@ function registerAll(ctx: Context): void {
                 createElement(MarkerNotice, { payload: customData as MarkerPayload | undefined })
             : ({ customData, path }) =>
                 createElement(BioFileView, {
-                  payload: customData as BioViewerPayload | undefined,
+                  payload: customData as ViewerPayload | undefined,
                   path,
                 }),
         }),
@@ -241,6 +249,63 @@ function registerAll(ctx: Context): void {
           createElement(BioBrowser, { ctx: tabCtx, scope, visible }),
       }),
     "dsh-bioviewer: browser tab",
+  );
+
+  // Where an agent-opened database structure lands. It is `hidden` because it is
+  // only ever opened programmatically, and it declares `createTab` because the
+  // native surface otherwise focuses an existing tab of the same type — which
+  // would make a second structure replace the first instead of opening beside it.
+  ctx.effect(
+    () =>
+      ctx.betterSidebar.registerTab({
+        id: STRUCTURE_TAB_ID,
+        title: () => "Structure",
+        icon: (size: number) => createElement(BioViewerIcon, { size }),
+        hidden: true,
+        createTab: () => {
+          structureTabSeq += 1;
+          return {
+            tab: {
+              id: `${STRUCTURE_TAB_ID}:${structureTabSeq}`,
+              type: STRUCTURE_TAB_ID,
+              title: "Structure",
+            },
+          };
+        },
+        component: ({ tab }): ReactNode => createElement(StructureTabView, { path: tab.path }),
+      }),
+    "dsh-bioviewer: structure tab",
+  );
+
+  // Receive `bio_open` requests from the host half. Long-poll, so an idle
+  // sidebar parks a single request rather than reconnecting on a timer.
+  //
+  // Guarded on purpose: the poller reads the sidebar snapshot and subscribes to
+  // its changes, and `apply()` throwing here would take the whole plugin down —
+  // including the viewers registered above — on a host whose better-sidebar is
+  // older than the two methods. Degrading to "no agent opens" is the honest
+  // outcome; silently registering nothing is not.
+  if (
+    typeof ctx.betterSidebar.getSnapshot !== "function" ||
+    typeof ctx.betterSidebar.subscribeState !== "function"
+  ) {
+    console.warn(
+      "[dsh-bioviewer] this better-sidebar does not expose the sidebar snapshot; agent-triggered opens are disabled",
+    );
+    return;
+  }
+
+  ctx.effect(
+    () =>
+      startAgentOpens({
+        getSessionId: () => ctx.betterSidebar.getSnapshot().sessionId,
+        subscribeSession: (listener) => ctx.betterSidebar.subscribeState(listener),
+        sink: ctx.betterSidebar,
+        onError: (error) => {
+          console.warn("[dsh-bioviewer] the agent-open poll failed", error);
+        },
+      }),
+    "dsh-bioviewer: agent opens",
   );
 }
 

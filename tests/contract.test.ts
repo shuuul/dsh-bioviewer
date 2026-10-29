@@ -205,6 +205,42 @@ describe("C6 installed dsh-better-sidebar contract", () => {
     expect(typeOnly.length).toBeGreaterThan(0);
   });
 
+  test("every DSH package the host bundle value-imports is a declared, non-optional peer", () => {
+    // The host half is a real Node plugin now: it value-imports `defineTool`
+    // from @deepseek-ai/dsh-tools. That coupling must be declared, because a
+    // missing package fails the module import outright — the loader cannot even
+    // report a useful error.
+    //
+    // The import list is DERIVED from the built artifact rather than hardcoded,
+    // so the next value-import someone adds cannot slip through undeclared. The
+    // current peer list is just this invariant's current value.
+    const host = read(join(root, "lib/index.js"));
+    const specifiers = [
+      ...new Set(
+        [...host.matchAll(/\bfrom\s*["']([^"']+)["']/g), ...host.matchAll(/\brequire\s*\(\s*["']([^"']+)["']\s*\)/g)].map(
+          (match) => match[1],
+        ),
+      ),
+    ].sort();
+    const dshPackages = specifiers.filter((spec) => spec.startsWith("@deepseek-ai/"));
+    console.log(`[C6] host bundle imports: ${specifiers.join(", ") || "(none)"}`);
+    console.log(`[C6] DSH packages value-imported by the host half: ${dshPackages.join(", ") || "(none)"}`);
+    // Non-vacuity: if the scan finds nothing, the invariant below proves nothing.
+    expect(dshPackages.length).toBeGreaterThan(0);
+
+    for (const spec of dshPackages) {
+      expect(ourPkg.peerDependencies[spec]).toBeDefined();
+      // Required, not optional: a missing package here is an import failure,
+      // not a degraded feature.
+      expect(ourPkg.peerDependenciesMeta?.[spec]?.optional ?? false).toBe(false);
+    }
+
+    // The other half of the rule: a DSH package must never be a runtime
+    // dependency, because the profile provides it.
+    const asDependency = Object.keys(ourPkg.dependencies).filter((name) => name.startsWith("@deepseek-ai/"));
+    expect(asDependency).toEqual([]);
+  });
+
   test("the shell-resolvable specifier allowlist used by the build is the documented one", () => {
     // The allowlist is pinned here so build.test.ts and this file cannot drift
     // apart; build.test.ts asserts the emitted bundle stays inside it.

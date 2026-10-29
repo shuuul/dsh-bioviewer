@@ -4,11 +4,13 @@ Adversarial verification of the C1–C6 claims in `task-4`. Every verdict below 
 backed by a command that was actually run and the output it produced; nothing
 here is a summary of intent.
 
-This is **revision 3** of the report. The tree moved twice after the first PASS
-run: revision 2 (`markers.tsx` split, style-element id fixed, three test files
-added) was re-established in full, and revision 3 is a docs-only delta whose
-analysis is in §3b. §3 records exactly what changed in revision 2 and which
-claims that could plausibly have broken.
+This is **revision 5** of the report. The tree has moved three times since the
+first PASS run: revision 2 (`markers.tsx` split, style-element id fixed, three
+test files added) was re-established in full; revision 3 was a docs-only delta
+(§3b); revision 4 adds the **agent-triggered open** surface, which changed the
+client half and the host half, so C1/C2/C3 were re-run on a fresh build and three
+of my assertions had to be updated to the new shape (§3c). §3 records revision 2,
+§3b revision 3, §3c revision 4, §3d revision 5.
 
 **Verified revision** — plugin files (`src/**`, `scripts/**`, `package.json`,
 `tsconfig*.json`, `cordis.patch.yml`) hashed as a tree:
@@ -16,27 +18,30 @@ claims that could plausibly have broken.
 ```
 $ find src scripts package.json tsconfig.json tsconfig.build.json cordis.patch.yml -type f \
     | sort | xargs shasum -a 256 | shasum -a 256
-143c722fa1edd6e895d526bfc86a6412fa315a0c96bf87cfd54fa4546eb20992  -
+2dae8e67da6d51dc15d4b3dab0de8fc43d1869734be94a5e570b977ab0cb8b63  -
 ```
-
-The hash moved from revision 2's `53e17bb6…` because `package.json` gained
-`"README_EN.md"` in its `files` array (verified with `git diff HEAD~1 --
-package.json`: that is the only change). No file under `src/**`, `scripts/**` or
-the build configs moved, which is why the artifacts below are byte-identical.
-
-Git revision `5a3c194` (the README change is its own commit on top of `1ec961b`).
 
 **Built artifacts**
 
-| Artifact | Size | sha256 | vs. revision 1 |
+| Artifact | Size | sha256 | vs. revision 4 |
 | --- | --- | --- | --- |
-| `lib/index.js` | 180 B | `c8bb96433be102a636d005cbcc7660d96bf19ee083803424b066d8b2f8a0e13d` | **unchanged** |
-| `lib/client.js` | 3 346 927 B | `81a94165ebe0d5dd605b4eabbd717e9077cc8d3bff593a4ad7ec71bb6ed74689` | was `f2ebe6c0…`, 3 347 049 B |
+| `lib/index.js` | 9 365 B | `fd619e982371c0d57af8641e0cc7268402b8502a2ae726415ff52e5c58c4ee59` | was 9 293 B (`056a92cd…`) |
+| `lib/client.js` | 3 353 497 B | `dfd85708e73e570536b4e3247936c02f973db55fef031ade47c24b92579a8b1d` | was 3 353 472 B (`01ec138a…`) |
 
-Both hashes match the values the lead reported — reproduced here by a clean
-`rm -rf lib && bun run build` in **both** revision 2 and revision 3, not taken on
-trust. The build is deterministic: repeated clean builds reproduce both hashes
-byte for byte, which is what makes the §3b inertness argument sound.
+Both changed this time, and deliberately: the client half gained the agent-open
+poller and the structure tab, and the host half gained `src/host/**` (the
+`bio_open` tool and its route). The host half is no longer the 180-byte stub.
+
+Reproduced here by a clean `rm -rf lib && bun run build`, twice — the two clean
+builds are byte-identical, so the build is still deterministic and the hashes
+above are the artifact identity for this revision.
+
+The revision hash moved once more *within* revision 4 (`86791986…` →
+`af6ff88d…`) when `package.json` gained the host half's dependencies
+(`@deepseek-ai/dsh-tools` as a peer, plus the `dsh-host-webserver` /
+`dsh-session` / `dsh-tools` / `dsh-working-directory` dev entries). Only
+dependency declarations changed, so the artifacts are byte-identical either side
+of that move — re-checked, not assumed.
 
 **Environment** — bun 1.4.4 (macOS arm64), `dsh` 0.2.1-rc.2, `dsh-better-sidebar`
 0.28.2 (installed), `@deepseek-ai/cordis` 4.0.5, `react`/`react-dom` 18.3.1,
@@ -59,10 +64,10 @@ Acceptance command (the one required by `task-4`):
 
 ```
 $ bun test tests/registration.test.ts tests/contract.test.ts tests/build.test.ts
- 44 pass
+ 61 pass
  0 fail
- 220 expect() calls
-Ran 44 tests across 3 files. [1363.00ms]
+ 280 expect() calls
+Ran 61 tests across 3 files. [1810.00ms]
 $ echo $?
 0
 ```
@@ -72,22 +77,23 @@ Whole-repository gate (lint → typecheck → build → test):
 ```
 $ bun run verify:fast
 ...
- 149 pass
+ 262 pass
  0 fail
- 1043 expect() calls
-Ran 149 tests across 12 files. [1223.00ms]
+ 1331 expect() calls
+Ran 262 tests across 16 files. [1850.00ms]
 $ echo $?
 0
 ```
 
-(The lead's run of the same gate reports 1042 expect() calls; the difference is
-exactly the one assertion added to `tests/build.test.ts` in §3b — the `files`
-existence check. Same 149 tests, same 0 failures.)
+The gate grew by 109 tests and 260 assertions over revision 3: the agent-open
+surface (client + host) plus 17 new assertions of mine in
+`tests/registration.test.ts` covering the registration guard, the poll floor and
+transport base resolution.
 
 ```
 $ bunx oxlint
 Found 0 warnings and 0 errors.
-Finished in 8ms on 30 files with 116 rules using 12 threads.
+Finished in 8ms on 41 files with 116 rules using 12 threads.
 ```
 
 ---
@@ -182,6 +188,147 @@ One correction worth recording: the verified-revision hash *does* move in this
 delta — `53e17bb6…` → `143c722f…` — because `package.json` is part of the hashed
 plugin file set. `git diff HEAD~1 -- package.json` shows the `files` entry is the
 only change, which is why the artifacts stay identical.
+
+---
+
+## 3c. Revision 4 delta — agent-triggered opens (NOT inert)
+
+What changed, from `git status`:
+
+| Area | Change |
+| --- | --- |
+| `src/client/agent-opens.ts`, `src/client/transport.ts` (new) | the long-poll loop and this plugin's own route resolver |
+| `src/shared/opens.ts` (new) | `parseOpenTarget` / `unsupportedPathReason` / `structureTitle` / `isOpenRequest` |
+| `src/client/index.tsx` | a **second tab type** (`dsh-bioviewer:structure`, hidden, with `createTab`) and the guarded poller effect |
+| `src/client/{file-view,load,payload,studio}.tsx`, `src/shared/index.ts`, `README.md` | supporting changes |
+| `src/index.ts`, `src/host/**` (new) | the host half — `bio_open` tool + its route |
+| `tests/{agent-opens,transport,host-registry,host-tool}.test.ts` (new) | the authors' own tests |
+
+Unlike revision 3, this one is **not** inert, so the artifact legs were re-run on
+a fresh build rather than argued:
+
+* **C1** — clean build, exit 0; `lib/index.js` 9 293 B, `lib/client.js`
+  3 353 472 B; host half still imports and exports `apply`; every `package.json`
+  target and every non-glob `files` entry exists. **The host half is no longer a
+  stub** — the "intentionally minimal" reading in revision ≤3 is obsolete. It now
+  value-imports exactly one external (`@deepseek-ai/dsh-tools`, plus `node:path`),
+  and that coupling is pinned by the new C6 invariant below.
+* **C2** — the emitted wrapper still registers exactly one handoff with
+  `id = "dsh-bioviewer"`; `factory(require)` still returns `{ apply, inject }`;
+  the **built** `apply` now wires **2 tabs + 11 viewers**.
+* **C3** — unchanged and re-verified on the new bundle: exactly
+  `react`, `react-dom`, `react/jsx-runtime`, no computed `require`, no chunk or
+  asset requires, 0 parse diagnostics. The new files did **not** disturb the
+  bundle's specifier set.
+* **C4/C5/C6** — re-run; C4 and C5 needed their expected shape updated (§3c.1).
+
+### 3c.1 Three stale assertions, updated deliberately
+
+These failed on the new tree, and they were **stale, not defects**: the surface
+genuinely grew. I changed the expected shape rather than the strictness, and
+record why:
+
+| Test | Was | Now | Why |
+| --- | --- | --- | --- |
+| C4 "registers exactly one tab" | `tabs.length === 1` | exactly `{browser, structure}`, and each one's shape | a count alone would pass on two `browser` tabs; the two types are deliberately different |
+| C5 "service arriving late" | `tabs.length === 1` | the two ids, 11 viewers | same surface, reached through the late-service path |
+| C2 "built apply wires the registry" | `tabs.length === 1` | the two ids plus `structure.hidden`/`structure.createTab`, 11 viewers | proves the *built* artifact carries the new tab, not just the source |
+
+The shape assertions the lead asked for, all present:
+
+* exactly two ids: `dsh-bioviewer:browser` and `dsh-bioviewer:structure`;
+* `browser` — `hidden` **absent** (not merely falsy), `single === true`,
+  `order === 45`, has a `component`;
+* `structure` — `hidden === true`, `createTab` is a function, and two calls to it
+  mint **distinct** ids (otherwise a second structure would replace the first,
+  which is exactly what `createTab` exists to prevent);
+* 11 viewers, all 16 non-gz extensions claimed, ids namespaced and unique.
+
+---
+
+## 3d. Revision 5 delta — the host-half ordering defect (a REAL defect, found live)
+
+This is the delta that matters most, because it is the one a fake-ctx unit test
+could not see.
+
+**D6 — `apply()` raced the host's service providers.** The host half read
+`ctx.get("webServer")` / `ctx.get("tools")` synchronously while declaring
+`export const inject = []`. Activation is not ordered after the webserver, so on
+a real host both lookups returned `undefined`, both registrations took their
+documented "degrade to a no-op + log" path, and the plugin *looked* mounted while
+`/bioviewer/open` answered the **server's generic 404** — bare, no
+`content-type`, nothing thrown, no test failed.
+
+Fixed by `ctx.inject(["webServer", "tools"], (scoped) => scoped.effect(...))`.
+Both halves changed in this revision, so every artifact leg was re-run:
+
+* **C1** — clean build, exit 0; `lib/index.js` 9 365 B, `lib/client.js`
+  3 353 497 B; both hashes reproduce the lead's exactly; every `package.json`
+  target and non-glob `files` entry exists.
+* **C2** — one handoff, `id = "dsh-bioviewer"`, `factory(require)` →
+  `{ apply, inject }`; the **built** `apply` wires 2 tabs + 11 viewers, 16/16
+  non-gz extensions.
+* **C3** — unchanged: exactly `react`, `react-dom`, `react/jsx-runtime`, 0 parse
+  diagnostics, no computed `require`, no chunk/asset requires.
+* **C6** — the host bundle still value-imports exactly
+  `@deepseek-ai/dsh-tools` + `node:path`, and that peer is declared and
+  non-optional.
+
+### 3d.1 The fix, verified on a real host
+
+A fake ctx cannot see activation ordering or HTTP behaviour, so the fix was
+checked against a live `dsh --profile web` on a throwaway `DSH_HOME`
+(`/tmp/dsh-verify-final`, deleted; port 59395; the user's GUI on 59290 was never
+touched and was still answering afterwards):
+
+| Probe | Expected after the fix | Observed |
+| --- | --- | --- |
+| `GET /bioviewer/open?sessionId=x` **without a cookie** | 403 with OUR JSON body | `403`, `content-type: application/json; charset=utf-8`, `cache-control: no-store`, `{"ok":false,"error":{"code":"forbidden","message":"forbidden"}}` |
+| same, with the session cookie | held ~25 s, then a null envelope | **held 25 s**, then `200 {"ok":true,"value":{"request":null}}` |
+| `GET /bioviewer/open` (no `sessionId`) | 400 | `400`, `{"ok":false,"error":{"code":"bad-request","message":"sessionId is required"}}` |
+| boot graph | our row present | `{"id":"dsh-bioviewer","url":"plugins/??dsh-bioviewer/client.js&rev=9c416ae11f43","rev":"9c416ae11f43"}` in a 71-entry graph |
+
+The first row is the discriminator: **before** the fix that same request was a
+bare `404` with no `content-type` — the server's generic not-found, i.e. the
+route had never registered. A 403 carrying our own JSON envelope proves the
+route is mounted and reached. Teardown was verified rather than assumed: the
+throwaway server stopped (connection refused, no listener), the user's GUI was
+still answering, and `~/.dsh` was untouched (mtime unchanged at 12:08).
+
+### 3d.2 The ordering regression test bites (independently confirmed)
+
+`tests/host-tool.test.ts` models the real ordering with
+`inject: "now" | "manual" | "never"`. Reverting `apply()` to the pre-fix
+synchronous form in a throwaway copy (`/tmp/mut4`, deleted; `src/**` is outside
+my write scope) — mutation landing asserted before running — gives:
+
+| `apply()` version | `tests/host-tool.test.ts` |
+| --- | --- |
+| shipped (`ctx.inject`) | **46 pass / 0 fail** |
+| reverted (synchronous `ctx.get`) | **41 pass / 5 fail** |
+
+The five failures are exactly the `apply` describe's ordering tests: *waits for
+the host services instead of racing their provider*, *registers immediately when
+the services are already up*, *mounts without registering when the host never
+provides the services*, *registers the tool and the route inside one effect and
+disposes both*, and *releases every parked poll on unload*. (The sixth,
+"degrades per registration if a service is unreadable when it runs", still
+passes — it tests the degradation path, not the ordering.) This matches
+host-dev's report of 5 failures exactly.
+
+### 3d.3 F1 resolved
+
+The poller disposer no longer throws when `subscribeState` returns a
+non-function: `unsubscribe` is now held as `unknown` and called behind a
+`typeof unsubscribe === "function"` guard (`src/client/agent-opens.ts:245`).
+
+```
+[adv] dispose results: ["ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok","ok"]
+```
+
+My test no longer merely *records* this — it now **asserts** that every disposer
+returns cleanly, so a regression re-opens the finding as a failure. The loop
+still tears down normally (all 13 registrations removed on dispose).
 
 ---
 
@@ -506,6 +653,108 @@ volume readers but `@molstudio/core` accepts five —
 `export type VolumeFormat = "ccp4" | "dsn6" | "cube" | "dx" | "dscif";` — so the
 table correctly stops at the five.
 
+### The agent-open surface — three targeted falsification attempts
+
+These live in `tests/registration.test.ts` (this task's write scope is fixed to
+four files, so they sit beside the C4/C5 wiring tests rather than in a file of
+their own).
+
+**1. The registration guard.** `registerAll` capability-checks
+`getSnapshot`/`subscribeState` before starting the poller, because an exception
+there would take down every registration made before it. Both branches are
+asserted, and then the guard is attacked:
+
+| Scenario | Expected | Observed |
+| --- | --- | --- |
+| service **without** the two methods | full surface, no throw, poller not started, a warning | 2 tabs + 11 viewers, no poller effect, warning `agent-triggered opens are disabled` |
+| service **with** them | full surface, poller started as one extra effect | 15 effect labels including `dsh-bioviewer: agent opens` |
+| `getSnapshot` throws | must not escape `apply()` | 2 tabs + 11 viewers, poller still started |
+| `subscribeState` throws | must not escape `apply()` | 2 tabs + 11 viewers, poller still started |
+| `subscribeState` returns a non-function | must not escape `apply()` | 2 tabs + 11 viewers — see **F1** for what it does to teardown |
+
+**2. The poll floor.** A ceiling, not a lullaby — plus a differential proving the
+floor is load-bearing:
+
+```
+[floor] 150 ms at floor=10 ms -> 14 requests
+[floor] 60 ms window -> floor=10 ms: 6 requests, floor=0: 53 requests
+[floor] requests at dispose: 12, 60 ms later: 12
+```
+
+So a 150 ms window at a 10 ms floor makes 14 requests (ceiling asserted at 20,
+floor asserted non-vacuous at ≥ 2); the same 60 ms window makes **53** requests
+with the floor removed versus 6 with it; and disposal stops the loop dead.
+
+Doing this honestly produced **F2**: my first differential hung the test run
+forever. With `minPollIntervalMs: 0` and an answer that resolves in the
+microtask queue, the loop never yields a macrotask, so the `setTimeout` that ends
+the measurement window never fires. The floor is what prevents that starvation —
+which is why the harness now yields a macrotask per iteration and why the
+finding is recorded rather than hidden.
+
+**3. Transport prefix safety.** `pluginRouteUrl` resolves this plugin's own route
+because `hostRouteUrl()` only knows better-sidebar's `/sidebar/*`:
+
+```
+[transport] leading slash + sub-path -> http://127.0.0.1:5000/gui/bioviewer/open
+[transport] base with query -> http://127.0.0.1:5000/gui/bioviewer/open
+[transport] injected base -> http://127.0.0.1:6000/prefix/bioviewer/open
+[transport] dsh-app scheme -> dsh-app://app/bioviewer/open
+[transport] no-trailing-slash base -> http://127.0.0.1:5000/bioviewer/open
+```
+
+Covered: a leading-slash route is stripped and stays under a sub-path base; a
+base carrying a query keeps its path and drops the query; the injected
+`__DSH_TRANSPORT__.streamBaseUrl` wins over the document base; a non-http scheme
+(`dsh-app://app/`) is preserved rather than coerced; `""`, `42`, `null`,
+`undefined`, `{}` and even a non-object transport all fall back to the document
+base; and with no base at all the failure is a loud throw, not a relative URL.
+The last line is a **characterisation**, not a defect claim: a base whose path
+has no trailing slash resolves by standard relative-URL rules (the last segment
+is replaced), exactly as a browser would, so a shell injecting a directory base
+must include the trailing slash.
+
+### Host-half dependency declaration, and the registry race
+
+Two more attacks requested by the lead, both in this revision:
+
+**The DSH value-import invariant.** `lib/index.js` value-imports `defineTool`
+from `@deepseek-ai/dsh-tools`, which was undeclared until this revision. The
+invariant — *every DSH package the host bundle value-imports must be a declared,
+non-optional peer, and no `@deepseek-ai/*` may be a runtime dependency* — now has
+an assertion, with the import list **derived from the built artifact** rather
+than hardcoded:
+
+```
+[C6] host bundle imports: @deepseek-ai/dsh-tools, node:path
+[C6] DSH packages value-imported by the host half: @deepseek-ai/dsh-tools
+```
+
+It also asserts the list is non-empty, so the check cannot pass by scanning
+nothing. Note on placement: the lead asked for this in `tests/manifest.test.ts`,
+which is outside this task's fixed write scope (`tests/registration.test.ts`,
+`tests/contract.test.ts`, `tests/build.test.ts`, `docs/VERIFICATION.md`), so it
+lives in `tests/contract.test.ts` beside the other dependency-surface
+assertions. Same invariant, same file coverage — just a different file.
+
+**The registry race.** host-dev's fix makes `enqueue` skip a waiter that already
+settled (its `finally` has not run yet) instead of handing it the request and
+reporting `delivered: true`. The regression test was verified by mutation in a
+throwaway copy (`/tmp/mut3`, since deleted — `src/**` is outside my write scope):
+
+| Registry version | `tests/host-registry.test.ts` |
+| --- | --- |
+| shipped (skips settled waiters) | **12 pass / 0 fail** |
+| naive (`parked.shift()` + unconditional `settle`, `delivered: true`) | **11 pass / 1 fail** — only `never hands a request to a waiter that already gave up` |
+
+The failing assertion is `tests/host-registry.test.ts:126` —
+`expect(registry.enqueue("s1", open("1ABC"))).toEqual({ delivered: false })` —
+which receives `{ delivered: true }` under the naive version, with the request
+handed to a waiter that already gave up. That is exactly the silent
+"`delivered: true` but the open vanished" failure the feature must not have, and
+the test catches it and nothing else. The mutation landed (asserted before
+running) and the real tree was never touched.
+
 ---
 
 ## 6. Live DSH host verification (closes limitations #2 and #3)
@@ -691,6 +940,39 @@ adding `m` (the pattern was already line-bounded). Observed after the fix:
 [C6] type-only dsh-better-sidebar imports in: src/client/index.tsx
 ```
 
+### F1 — the poller's disposer throws when `subscribeState` returns a non-function (**RESOLVED in revision 5**)
+
+`startAgentOpens` stores whatever `subscribeSession(...)` returns as its
+unsubscribe handle and calls it on teardown. The declared contract is
+`subscribeState(listener): () => void`, so a host returning anything else is
+already broken — but the failure lands on the *disposer*, which is what cordis
+calls during plugin unload / HMR:
+
+```
+[adv] dispose results: ["ok", …, "threw: unsubscribe is not a function. (In 'unsubscribe()', 'unsubscribe' is undefined)"]
+[adv] F1 disposer throws on a non-function unsubscribe: true
+```
+
+`apply()` itself did not throw, all 13 registrations were made, and the tab and
+viewer disposers still ran — so the blast radius was the poller effect only.
+
+**Fixed in revision 5** (the handle is held as `unknown` and called behind a
+`typeof unsubscribe === "function"` guard), and my test now asserts the clean
+teardown instead of recording the throw. See §3d.3.
+
+### F2 — a zero poll floor starves the event loop (property of the option)
+
+Found by my own harness hanging: with `minPollIntervalMs: 0` and a host that
+answers immediately, the loop's `await` resolves in the microtask queue and never
+yields a macrotask, so timers — including the one my test used to end its
+measurement window — never fire. Measured differentially: 53 requests in a 60 ms
+window at floor 0 versus 6 at floor 10.
+
+The plugin never passes `0` (the default is 250 ms, and `registerAll` does not
+override it), so this is not a live defect. It is recorded because it shows the
+floor is load-bearing rather than decorative, and because the option's contract
+should be read as "a positive floor, or the loop can starve timers".
+
 ---
 
 ## 8. What is still not verified
@@ -699,7 +981,24 @@ adding `m` (the pattern was already line-bounded). Observed after the fix:
    (§6), but no page was loaded, so the bundle was never materialized by the real
    loader, no component ever mounted, and **Mol\*/WebGL rendering and the sidebar
    UI remain unverified**. The in-process materialization in §4 runs under a
-   hand-written DOM shim, not a browser.
+   hand-written DOM shim, not a browser. The agent-open loop in particular has
+   never run against a real `fetch`, a real host route, or a real session switch.
+8. **The host route is verified at the HTTP boundary only (revision 5).** Booting
+   a real host showed `/bioviewer/open` answering `403` with our JSON envelope when
+   unauthenticated, `400` without a `sessionId`, and holding an authenticated poll
+   for 25 s before returning a null envelope (§3d.1) — which is what proves the
+   route registered at all. What is **not** verified: the tool's argument handling
+   and queueing end to end (covered by host-dev's own tests, not re-run here), and
+   any real delivery of an open from a model tool call through to a mounted viewer
+   — no session was created and no client ever polled with a live `betterSidebar`
+   service, so the consume-once handoff has never been exercised against real
+   components.
+9. **The new client modules are covered for the properties named in §5 only.**
+   `parseOpenTarget` / `unsupportedPathReason` / `isOpenRequest`, the loop's
+   session-switch abort and its backoff schedule are exercised by the authors'
+   `tests/agent-opens.test.ts` and `tests/transport.test.ts`; I verified the
+   registration guard, the poll floor and the transport base independently rather
+   than re-running those files.
 2. **No session was exercised.** The throwaway server was never logged into, so
    no session was created and the `betterSidebar` client service never came up —
    the registration path therefore ran against a fake ctx (§4) and against the

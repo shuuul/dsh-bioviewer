@@ -263,11 +263,15 @@ describe("C2 client bundle registration handoff", () => {
     // Stronger than "apply is a function": a bundle that mangled the factory
     // body could still export a stub. This drives the BUILT surface (not the
     // TS source) through the same fake-ctx shape registration.test.ts uses.
+    //
+    // The service here deliberately lacks getSnapshot/subscribeState, so the
+    // agent-open poller is skipped: this test is about the descriptors the
+    // bundle carries, and a started poller would leave a live loop behind.
     const { surface } = materializeBundle();
-    const tabs: Array<{ id: string }> = [];
+    const tabs: Array<{ id: string; hidden?: boolean; createTab?: unknown }> = [];
     const viewers: Array<{ id: string; exts?: readonly string[] }> = [];
     const sidebar = {
-      registerTab: (descriptor: { id: string }) => {
+      registerTab: (descriptor: { id: string; hidden?: boolean; createTab?: unknown }) => {
         tabs.push(descriptor);
         return () => {};
       },
@@ -277,6 +281,7 @@ describe("C2 client bundle registration handoff", () => {
       },
       hostRouteUrl: (route: string) => `/sidebar/${route}`,
       openFile: () => {},
+      openTab: () => {},
     };
     const ctx: Record<string, unknown> = {
       betterSidebar: sidebar,
@@ -295,8 +300,15 @@ describe("C2 client bundle registration handoff", () => {
 
     (surface.apply as (c: unknown) => void)(ctx);
     const ids = [...tabs, ...viewers].map((descriptor) => descriptor.id);
-    console.log(`[C2] built apply(): ${tabs.length} tab, ${viewers.length} viewers -> ${ids.join(", ")}`);
-    expect(tabs).toHaveLength(1);
+    console.log(`[C2] built apply(): ${tabs.length} tabs, ${viewers.length} viewers -> ${ids.join(", ")}`);
+    // Two tab types since the agent-open delta: the browser and the hidden
+    // structure tab an agent-opened database entry lands in.
+    expect(tabs.map((tab) => tab.id).sort()).toEqual(
+      [`${ourPkg.name}:browser`, `${ourPkg.name}:structure`].sort(),
+    );
+    const structure = tabs.find((tab) => tab.id === `${ourPkg.name}:structure`)!;
+    expect(structure.hidden).toBe(true);
+    expect(typeof structure.createTab).toBe("function");
     expect(ids).toContain(`${ourPkg.name}:pdb`);
     expect(ids).toContain(`${ourPkg.name}:gzip`);
     expect(new Set(ids).size).toBe(ids.length);

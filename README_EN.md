@@ -23,6 +23,9 @@ the same viewer stack as the
   the file stays compressed on the wire and is inflated in the browser.
 - **A workspace browser** — a "BioViewer" sidebar tab lists the bio files in the
   session working directory, so you can find them without leaving the sidebar.
+- **The agent can open things itself** — the model can call the `bio_open` tool to
+  push a file or a database entry (`pdb:1cbs`, `alphafold:P00533`, `emdb:EMD-1234`)
+  straight into your sidebar.
 - **Follows the shell** — the viewer tracks the DSH light/dark scheme and uses
   DSH design tokens, so every skin applies without per-skin work.
 - **Live reload** — when the model rewrites a file you are looking at, the view
@@ -96,6 +99,33 @@ dsh plugin --profile web add dsh-better-sidebar@latest
   viewer takes over the editor pane.
 - **Compressed files** — `.gz` files are routed by content sniffing, so they work
   the same way as their uncompressed counterparts.
+
+## Agent-triggered opens
+
+Besides clicking a file yourself, you can ask the model to put something in the
+sidebar. The host half registers a `bio_open` tool:
+
+| Parameter | Meaning |
+| --- | --- |
+| `target` | A file path (absolute, or relative to the session working directory), or a database entry: `pdb:1cbs`, `alphafold:P00533`, `emdb:EMD-1234` |
+| `title` | Optional tab title (defaults to the file name, or the database and id) |
+
+Its result carries a `delivered` flag: `true` means a sidebar was connected and
+the open is on screen; `false` means that session's sidebar view is not mounted
+yet, so the open is **queued** there and lands when it is next shown.
+
+The difference from better-sidebar's own `sidebar_open` is that this one is
+**bio-aware**: the extension is checked against this plugin's format table first,
+so an unsupported file is refused with the list of supported extensions instead of
+silently landing in the text editor — and a database entry needs no local file at
+all.
+
+The path is: the tool queues the request per session → the sidebar takes it with a
+long poll (`GET bioviewer/open?sessionId=…`) → the client opens the file (through
+the editor, where the registered viewer takes over) or opens a structure tab. The
+reason this link had to be built at all is that `ctx.sidebarRight` is a
+**client-only** service — its host half contributes nothing to the host tree — so
+there is no host-side API that can push an open into the browser.
 
 ## Development
 

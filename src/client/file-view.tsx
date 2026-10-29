@@ -12,8 +12,9 @@
  * run inside a component.
  */
 import { createElement, type ReactNode } from "react";
+import { parseOpenTarget, structureTitle } from "../shared/opens";
 import { isMarkerPayload, type MarkerPayload } from "./cmm";
-import type { BioViewerPayload } from "./payload";
+import type { ViewerPayload } from "./payload";
 import { BioViewer } from "./studio";
 import { useViewerTheme } from "./use-theme";
 
@@ -33,7 +34,7 @@ export interface BioFileViewProps {
    * component after a successful load, but a defensive branch keeps a host
    * contract change from producing a blank pane.
    */
-  readonly payload: BioViewerPayload | undefined;
+  readonly payload: ViewerPayload | undefined;
   /** Path the host asked for, used in the fallback notice. */
   readonly path: string;
 }
@@ -48,6 +49,37 @@ export function BioFileView(props: BioFileViewProps): ReactNode {
     });
   }
   return createElement(BioViewer, { payload, theme });
+}
+
+/**
+ * The pane for a structure the agent asked to open (`pdb:1cbs`, …).
+ *
+ * The tab carries the accession in `tab.path` — the only field a component tab
+ * receives that survives a reload — so it is parsed back with the same
+ * `parseOpenTarget` the tool used. One parser, so the two halves cannot disagree
+ * about what an address means.
+ */
+export function StructureTabView(props: { readonly path: string | undefined }): ReactNode {
+  const theme = useViewerTheme();
+  const parsed = props.path === undefined ? { kind: "invalid" as const, reason: "the tab has no address" } : parseOpenTarget(props.path);
+  if (parsed.kind !== "structure") {
+    return createElement(BioNotice, {
+      title: "Unknown structure",
+      body:
+        parsed.kind === "invalid"
+          ? `This tab does not name a database structure: ${parsed.reason}.`
+          : "This tab does not name a database structure.",
+    });
+  }
+  return createElement(BioViewer, {
+    payload: {
+      kind: "structure",
+      source: parsed.source,
+      id: parsed.id,
+      title: structureTitle(parsed.source, parsed.id),
+    },
+    theme,
+  });
 }
 
 /**
@@ -91,7 +123,7 @@ export function MarkerNotice(props: { readonly payload: MarkerPayload | undefine
 export function BioPayloadView(props: { readonly payload: unknown; readonly path: string }): ReactNode {
   if (isMarkerPayload(props.payload)) return createElement(MarkerNotice, { payload: props.payload });
   return createElement(BioFileView, {
-    payload: props.payload as BioViewerPayload | undefined,
+    payload: props.payload as ViewerPayload | undefined,
     path: props.path,
   });
 }
