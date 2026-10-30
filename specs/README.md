@@ -7,7 +7,6 @@ explicit acceptance evidence, or a handoff. Specs record execution, not permanen
 
 | Spec | Status | Outcome |
 | --- | --- | --- |
-| [003 — Marketplace listing and product screenshots](003-marketplace-listing.md) | Active | Shared BioViewer logo, App Store-style shots, public GitHub topics, catalog PRs. |
 
 ## Archived specs
 
@@ -15,6 +14,7 @@ explicit acceptance evidence, or a handoff. Specs record execution, not permanen
 | --- | --- | --- |
 | [001 — Historical verification migration](archive/001-historical-verification-migration.md) | 2026-10-29 | Preserve revision 7 evidence, not certify unfinished UI checks. |
 | [002 — Loader fixes and spec migration](archive/002-loader-fixes-and-spec-migration.md) | 2026-10-29 | Loader fixes, scoped WebGL acceptance and tracked-spec gate. |
+| [003 — Marketplace listing and product screenshots](archive/003-marketplace-listing.md) | 2026-10-30 | Shared BioViewer logo, App Store-style shots, public GitHub topics, catalog PRs. |
 
 ## Lifecycle and ownership
 

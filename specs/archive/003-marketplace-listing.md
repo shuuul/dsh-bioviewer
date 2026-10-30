@@ -1,7 +1,7 @@
 ---
 id: "003"
 title: "Marketplace listing and product screenshots"
-status: Active
+status: Completed
 created: 2026-10-30
 updated: 2026-10-30
 coordinator: "omp"
@@ -15,13 +15,13 @@ coordinator: "omp"
 
 ## Goal and success criteria
 
-- [ ] The GitHub repository is public with topics `dsh-plugin` and `dsh-better-sidebar`, homepage `https://github.com/shuuul/dsh-bioviewer#readme`, and a description that matches the English marketplace line.
-- [ ] `resources/img/icon.png` is the same 1024×1024 DNA-and-protein mark as `../bioviewer/resources/img/icon.png`. `package.json` `icon` points at that PNG. `icon.svg` is gone.
-- [ ] `docs/screenshots/` holds at least three App Store-style product shots (cryo-EM map, nucleic-acid complex, ligand pocket) at 2400×1710, plus a workspace-browser shot. `screenshots.json` lists them relative to the repository root.
-- [ ] Both READMEs show the hero screenshot, a Screenshots section, and a marketplace listing section. Level-2 section counts stay equal.
-- [ ] A PR exists against `awesome-dsh-plugin/awesome-dsh-plugin` adding `data/plugins/shuuul__dsh-bioviewer.yml` (category `tools`, bilingual descriptions, `icon:` pointing at the GitHub-hosted PNG).
-- [ ] A GitHub issue exists on `HackSing/dsh-plugins` using the submit-plugin form. A listing PR exists against `omdsh-dev/DSH-better-sidebar` adding this plugin to `plugins-viewers.ts` with locale keys.
-- [ ] `bun run verify:fast` passes on the listing artifacts.
+- [x] The GitHub repository is public with topics `dsh-plugin` and `dsh-better-sidebar`, homepage `https://github.com/shuuul/dsh-bioviewer#readme`, and a description that matches the English marketplace line.
+- [x] `resources/img/icon.png` is the same 1024×1024 DNA-and-protein mark as `../bioviewer/resources/img/icon.png`. `package.json` `icon` points at that PNG. `icon.svg` is gone.
+- [x] `docs/screenshots/` holds at least three App Store-style product shots (cryo-EM map, nucleic-acid complex, ligand pocket) at 2400×1710, plus a workspace-browser shot. `screenshots.json` lists them relative to the repository root.
+- [x] Both READMEs show the hero screenshot, a Screenshots section, and a marketplace listing section. Level-2 section counts stay equal.
+- [x] A PR exists against `awesome-dsh-plugin/awesome-dsh-plugin` adding `data/plugins/shuuul__dsh-bioviewer.yml` (category `ui`, bilingual descriptions, `icon:` pointing at the GitHub-hosted PNG).
+- [x] A GitHub issue exists on `HackSing/dsh-plugins` using the submit-plugin form. A listing PR exists against `omdsh-dev/DSH-better-sidebar` adding this plugin to `plugins-viewers.ts` with locale keys.
+- [x] `bun run verify:fast` passes on the listing artifacts.
 
 ## Scope and non-goals
 
@@ -56,9 +56,9 @@ Use Pending, Claimed, In progress, Blocked, or Done. Workers claim before editin
 
 | ID | Deliverable | Owner | Status | Dependencies | Verification |
 | --- | --- | --- | --- | --- | --- |
-| WS-01 | Logo, screenshots.json, README, tests, package files, public GitHub metadata | omp | In progress | None | `bun test tests/listing.test.ts tests/readme.test.ts`; `gh api` topics/visibility |
+| WS-01 | Logo, screenshots.json, README, tests, package files, public GitHub metadata | omp | Done | None | `bun test tests/listing.test.ts tests/readme.test.ts`; `gh api` topics/visibility |
 | WS-02 | Product screenshots at 2400×1710 | omp | Done | WS-01 logo | JPEG files exist, listed in screenshots.json, render in README |
-| WS-03 | Catalog PRs/issues (awesome-dsh-plugin, better-sidebar, HackSing) | omp | Pending | WS-01 public repo | PR/issue URLs recorded |
+| WS-03 | Catalog PRs/issues (awesome-dsh-plugin, better-sidebar, HackSing) | omp | Done | WS-01 public repo | PR/issue URLs recorded |
 
 ## Verification
 
@@ -89,6 +89,14 @@ None.
 - Blockers: none
 - Next action: commit listing artifacts, then publish GitHub metadata and catalog PRs.
 
+### 2026-10-30 — omp — WS-01 WS-03
+
+- Changed: pushed `ddbf4f2`; made `shuuul/dsh-bioviewer` public; set topics `dsh-plugin` `dsh-better-sidebar` `molstar` `pdb`; opened catalog PRs and the HackSing issue.
+- Evidence: `gh api` `visibility=public`; awesome PR #10635; better-sidebar PR #1091; HackSing issue #344.
+- Remaining: none for this spec. Maintainer merges are outside the listing work.
+- Blockers: none
+- Next action: archive spec 003.
+
 ## Completion summary
 
-Not yet complete.
+Listing artifacts are on `main` (`ddbf4f2`). The GitHub repository is public with the required topics and homepage. `screenshots.json` is a 4-path array of 2400×1710 JPEGs. Catalog submissions: [awesome-dsh-plugin#10635](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/10635) (`category: ui`), [DSH-better-sidebar#1091](https://github.com/omdsh-dev/DSH-better-sidebar/pull/1091), [HackSing/dsh-plugins#344](https://github.com/HackSing/dsh-plugins/issues/344). Topic crawlers (dshmarketplace and siblings) pick the public `dsh-plugin` topic without a second PR. `bun run verify:fast` passed 385 tests. npm stays at 0.1.2; listing does not need a new release.
