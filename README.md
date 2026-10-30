@@ -4,12 +4,22 @@
 
 在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 侧边栏里查看生物大分子、冷冻电镜密度图与小分子。插件向 [`dsh-better-sidebar`](https://github.com/omdsh-dev/DSH-better-sidebar) 注册预览器，用 [Mol\*](https://molstar.org)（[`@molstudio/react`](https://www.npmjs.com/package/@molstudio/react)）渲染，与 [BioViewer VS Code 扩展](https://github.com/shuuul/bioviewer) 同一套 viewer。
 
+![冷冻电镜密度图与拟合模型](docs/screenshots/em-map.jpeg)
+
 ## 功能
 
 - PDB / mmCIF / Binary CIF、MRC 密度图、小分子，以及 Chimera `.cmm` 标记（可与密度图叠图）
 - 所有格式支持 `.gz`；「BioViewer」tab 浏览工作区；跟随 DSH 明暗主题与界面语言
 - 文件被改写时**替换**重载，不叠加
 - 模型可用 `bio_open` 打开文件或数据库条目（`pdb:1cbs`、`alphafold:P00533`、`emdb:EMD-1234`）
+
+## 截图
+
+![Cas9 的蛋白、RNA 与 DNA](docs/screenshots/nucleic-acids.jpeg)
+
+![结合口袋中的配体](docs/screenshots/ligand.jpeg)
+
+![工作区浏览器](docs/screenshots/workspace.jpeg)
 
 ## 支持的格式
 
@@ -41,6 +51,10 @@ dsh plugin --profile web add dsh-better-sidebar@latest
 bun install && bun run build
 dsh plugin --profile web add "link:$PWD"
 ```
+
+## 市场上架
+
+插件会出现在读取 GitHub `dsh-plugin` topic 的市场，以及 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) 目录。商店图见 `screenshots.json`。图标与 [BioViewer VS Code 扩展](https://github.com/shuuul/bioviewer) 共用 `resources/img/icon.png`。
 
 ## 使用
 

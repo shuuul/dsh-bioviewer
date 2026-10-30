@@ -28,6 +28,7 @@ Mol\*.
 | `bun test` | `bun:test` suite |
 | `bun run check:specs` | Validate tracked spec structure, lifecycle, IDs and index |
 | `bun run verify:fast` | specs → lint → typecheck → build → test. **The gate**: `.husky/pre-push` and CI both run exactly this |
+| `bun run screenshots` | Rebuild App Store-style product shots into `docs/screenshots/` (needs local Chrome + ffmpeg) |
 | `bun run build --no-minify` | Unminified bundle, for reading the emitted code |
 
 Hooks: `pre-commit` runs `oxlint` on staged files (seconds, no tests);
@@ -322,7 +323,8 @@ release-please. `lib/` is gitignored; `prepublishOnly` builds it before
 2. Bump `version` in `package.json` and commit it (`chore(release): vX.Y.Z`).
 3. Tag and push: `git tag vX.Y.Z && git push origin main --tags`.
 4. `npm publish` (the `files` list already ships `lib`, `src`, `cordis.patch.yml`,
-   `icon.svg`, `locale/*.json`, `README.md`, `README_EN.md` and `LICENSE`).
+   `resources/img/icon.png`, `locale/*.json`, `README.md`, `README_EN.md` and `LICENSE`).
+   Storefront shots in `docs/screenshots/` and `screenshots.json` are GitHub-only; they are not in the npm tarball. The 1024×1024 PNG is the same DNA-and-protein mark as BioViewer for VS Code. The 16 px tab glyph stays the stroke atom so it remains readable in the sidebar.
 5. Consumers install with `dsh plugin --profile <name> add dsh-bioviewer@X.Y.Z`.
 
 Two constraints to preserve if automation is ever added: release workflows must

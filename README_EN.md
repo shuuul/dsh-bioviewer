@@ -9,12 +9,22 @@ and renders them with [Mol\*](https://molstar.org) via
 [`@molstudio/react`](https://www.npmjs.com/package/@molstudio/react) — the same
 stack as the [BioViewer VS Code extension](https://github.com/shuuul/bioviewer).
 
+![A cryo-EM map with its fitted model in BioViewer](docs/screenshots/em-map.jpeg)
+
 ## Features
 
 - PDB / mmCIF / Binary CIF, MRC maps, small molecules, and Chimera `.cmm` markers (can overlay a map)
 - `.gz` on every format; a "BioViewer" tab lists workspace files; follows the DSH theme and language
 - Reloads **replace** the old object when the file is rewritten
 - The model can call `bio_open` for a file or a database entry (`pdb:1cbs`, `alphafold:P00533`, `emdb:EMD-1234`)
+
+## Screenshots
+
+![Protein, RNA and DNA of Cas9 in one BioViewer tab](docs/screenshots/nucleic-acids.jpeg)
+
+![Imatinib in its Abl kinase binding pocket](docs/screenshots/ligand.jpeg)
+
+![The BioViewer workspace tab listing structures, maps and ligands](docs/screenshots/workspace.jpeg)
 
 ## Supported formats
 
@@ -46,6 +56,14 @@ Without better-sidebar the plugin loads but shows nothing. From a local checkout
 bun install && bun run build
 dsh plugin --profile web add "link:$PWD"
 ```
+
+## Marketplace
+
+The plugin is listed by GitHub `dsh-plugin` topic crawlers and the
+[awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
+catalog. Storefront shots live in `screenshots.json`. The icon is the same
+DNA-and-protein mark as the [BioViewer VS Code extension](https://github.com/shuuul/bioviewer)
+(`resources/img/icon.png`).
 
 ## Usage
 

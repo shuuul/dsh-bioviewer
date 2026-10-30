@@ -15,11 +15,14 @@
   "keywords": [
     "deepseek-harness",
     "dsh-plugin",
+    "dsh-better-sidebar",
     "molstar",
     "pdb",
-    "cryo-em"
+    "cryo-em",
+    "biology",
+    "visualization"
   ],
-  "icon": "icon.svg",
+  "icon": "resources/img/icon.png",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
@@ -48,7 +51,7 @@
     "lib",
     "src",
     "cordis.patch.yml",
-    "icon.svg",
+    "resources/img/icon.png",
     "locale/*.json",
     "README.md",
     "README_EN.md",
@@ -62,6 +65,7 @@
     "check:specs": "bun scripts/check-specs.mjs",
     "verify:fast": "bun run check:specs && bun run lint && bun run typecheck && bun run build && bun test",
     "verify": "bun run verify:fast",
+    "screenshots": "bun run scripts/screenshots/capture.ts",
     "prepare": "husky",
     "prepublishOnly": "bun run build"
   },

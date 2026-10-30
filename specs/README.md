@@ -7,6 +7,7 @@ explicit acceptance evidence, or a handoff. Specs record execution, not permanen
 
 | Spec | Status | Outcome |
 | --- | --- | --- |
+| [003 — Marketplace listing and product screenshots](003-marketplace-listing.md) | Active | Shared BioViewer logo, App Store-style shots, public GitHub topics, catalog PRs. |
 
 ## Archived specs
 
