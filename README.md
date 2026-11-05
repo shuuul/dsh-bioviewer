@@ -40,6 +40,8 @@
 
 ## 安装
 
+需要 **DSH 0.2.2-rc.1** 或更新版本（`cordis` 4.1.0、Node.js 24.9+）。
+
 ```sh
 dsh plugin --profile web add dsh-bioviewer
 dsh plugin --profile web add dsh-better-sidebar@latest

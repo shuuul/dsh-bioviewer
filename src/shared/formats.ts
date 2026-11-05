@@ -22,7 +22,7 @@
  *
  *     extOf(path) { const at = path.lastIndexOf('.'); ... path.slice(at + 1).toLowerCase() }
  *
- * measured against the installed 0.28.2 source:
+ * measured against the installed 0.30.1 source:
  *     extOf("1abc.pdb")     -> "pdb"
  *     extOf("1abc.pdb.gz")  -> "gz"
  *     extOf("/data/map.mrc.gz") -> "gz"

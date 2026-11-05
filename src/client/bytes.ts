@@ -6,7 +6,7 @@
  * with the platform's `DecompressionStream` — no dependency, no bundling of a
  * gunzip library into the client half.
  *
- * Route contract (verified against dsh-better-sidebar 0.28.x):
+ * Route contract (verified against dsh-better-sidebar 0.30.x):
  *   GET `sidebar/file?sessionId=<id>&path=<path>[&cwd=<cwd>]`
  *   - resolved through `ctx.betterSidebar.hostRouteUrl()`; the path is RELATIVE
  *     and must not start with `/` (a leading slash would drop a reverse-proxy

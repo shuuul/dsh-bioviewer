@@ -23,7 +23,7 @@
  * every successful model write, and the viewer's retry button goes through the
  * same path, so a second load of the same thing must not leave the previous
  * object in Mol*'s object list. `MolStudio` has no dedupe of its own (verified
- * in `@molstudio/core` 0.1.4), so a pre-existing object is removed first when
+ * in `@molstudio/core` 0.1.5), so a pre-existing object is removed first when
  * the studio exposes {@link StudioLike.getSnapshot} and {@link StudioLike.remove}
  * — matched on label *and* kind, so replacing a marker set can never delete a
  * structure that merely shares its name.
@@ -101,8 +101,10 @@ export function loadIntoStudio(studio: StudioLike, payload: ViewerPayload, signa
   const previous = pendingLoads.get(studio) ?? Promise.resolve();
   const next = previous.then(async () => {
     // MolStudio 0.1.4 publishes hierarchy snapshots with setTimeout(0)
-    // (MolStudio.ts:187-195). Yield before reading the replacement snapshot,
-    // including after a failed load which may have left partial objects.
+    // (MolStudio.ts:187-195); 0.1.5 flushes a scheduled rebuild inside
+    // `getSnapshot()`, but this build must also be correct on 0.1.4. Yield
+    // before reading the replacement snapshot, including after a failed load
+    // which may have left partial objects.
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     signal?.throwIfAborted();
     if (payload.kind === "structure") {

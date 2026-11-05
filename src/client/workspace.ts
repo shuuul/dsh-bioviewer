@@ -6,7 +6,7 @@
  * lifecycle. The only project dependency is the shared format table, used to
  * decide which names are bio files.
  *
- * Wire contract (verified against dsh-better-sidebar 0.28.2,
+ * Wire contract (verified against dsh-better-sidebar 0.30.1,
  * `lib/types/client/api.d.ts` + `src/index.ts`):
  *
  * - `POST sidebar/api/fs.trees` with `{ sessionId, cwd?, paths: string[] }`

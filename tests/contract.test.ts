@@ -1,6 +1,6 @@
 /**
  * C6 — contract conformance / anti-drift against the INSTALLED
- * `dsh-better-sidebar` (node_modules, version 0.28.2).
+ * `dsh-better-sidebar` (node_modules; the version is read from its manifest).
  *
  * Adversarial stance: every fact below is read out of the shipped artifact or
  * the installed type surface, never out of a prose paraphrase of it. Where the
@@ -90,11 +90,31 @@ describe("C6 installed dsh-better-sidebar contract", () => {
     expect(sidebarPkg.name).toBe("dsh-better-sidebar");
     const range = ourPkg.peerDependencies["dsh-better-sidebar"];
     expect(range).toBeDefined();
-    // ^0.28.0 accepts 0.28.2. Assert the installed major/minor is the declared one.
-    const declared = /^\^?(\d+)\.(\d+)\./.exec(range!)!;
-    const installed = /^(\d+)\.(\d+)\.(\d+)/.exec(sidebarPkg.version)!;
+    // The exact installed version must be inside the declared range; the range
+    // itself may span lines (`>=0.28.0 <0.31.0` accepts both a 0.28 pin and the
+    // tested 0.30.x), so semver, not a major.minor string compare, is the check.
     console.log(`[C6] installed dsh-better-sidebar ${sidebarPkg.version}, declared peer range ${range}`);
-    expect(`${installed[1]}.${installed[2]}`).toBe(`${declared[1]}.${declared[2]}`);
+    expect(Bun.semver.satisfies(sidebarPkg.version, range!)).toBe(true);
+  });
+
+  test("every declared peer range admits the dev version CI actually installs", () => {
+    // A stale peer floor is invisible until a consumer's package manager resolves
+    // it: the plugin compiles against node_modules, but `dsh plugin add` on a
+    // newer host fails ERESOLVE when the range excludes that host's version.
+    // Pre-releases make this easy to get wrong: `^0.2.1-rc.1` does NOT admit
+    // `0.2.2-rc.1` (npm's rule: a pre-release only satisfies a comparator set
+    // that names a pre-release of its own [major,minor,patch] tuple).
+    const checked: string[] = [];
+    for (const [name, range] of Object.entries(ourPkg.peerDependencies)) {
+      const installedPath = join(root, "node_modules", name, "package.json");
+      if (!existsSync(installedPath)) continue;
+      const installed = (JSON.parse(read(installedPath)) as { version: string }).version;
+      console.log(`[C6] peer ${name}: ${range} vs installed ${installed}`);
+      expect(Bun.semver.satisfies(installed, range)).toBe(true);
+      checked.push(name);
+    }
+    // Non-vacuity: the loop must actually read at least the DSH coupling.
+    expect(checked).toContain("@deepseek-ai/dsh-tools");
   });
 
   test("dsh-better-sidebar is a peer dependency (optional), never a runtime dependency", () => {
@@ -109,7 +129,9 @@ describe("C6 installed dsh-better-sidebar contract", () => {
       "registerTab(descriptor: TabDescriptor): () => void",
       "registerFileViewer(descriptor: FileViewerDescriptor): () => void",
       "hostRouteUrl(path: string): string",
-      "openFile(scope: SessionScope, path: string, title?: string): void",
+      // The plugin calls the three-argument form; 0.30 added an optional fourth
+      // `options` parameter (line targeting), so only the prefix is pinned.
+      "openFile(scope: SessionScope, path: string, title?: string",
     ]) {
       expect(dts).toContain(method);
     }

@@ -11,6 +11,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { Context } from "@deepseek-ai/cordis";
+import { assertSupportedJsonSchema } from "@deepseek-ai/dsh-tools";
 import { apply } from "../src/index";
 import { OpenRegistry } from "../src/host/registry";
 import { OPEN_ROUTE_PATH, registerOpenRoute } from "../src/host/route";
@@ -444,6 +445,19 @@ describe("resolveOpen: rejections", () => {
 // ── the tool ────────────────────────────────────────────────────────────────
 
 describe("bio_open registration", () => {
+  test("the registered output schemas satisfy the host's enforced JSON-Schema subset", () => {
+    // DSH 0.2.2's `ToolsService.register` throws `JsonSchemaError` unless the
+    // compiled output schema stays inside the enforced subset — a check a fake
+    // ctx cannot see. Validate with the installed 0.2.2 validator so an edit to
+    // OUTPUT_SCHEMA / defineTool fails in CI instead of at real-host registration.
+    const host = fakeHost();
+    registerViewerTools(host.ctx, new OpenRegistry());
+    expect(host.tools.length).toBeGreaterThan(0);
+    for (const tool of host.tools as CapturedTool[]) {
+      expect(() => assertSupportedJsonSchema(tool.output.schema)).not.toThrow();
+    }
+  });
+
   test("registers bio_open and bio_add", () => {
     const host = fakeHost();
     registerViewerTools(host.ctx, new OpenRegistry());

@@ -15,6 +15,8 @@ explicit acceptance evidence, or a handoff. Specs record execution, not permanen
 | [001 — Historical verification migration](archive/001-historical-verification-migration.md) | 2026-10-29 | Preserve revision 7 evidence, not certify unfinished UI checks. |
 | [002 — Loader fixes and spec migration](archive/002-loader-fixes-and-spec-migration.md) | 2026-10-29 | Loader fixes, scoped WebGL acceptance and tracked-spec gate. |
 | [003 — Marketplace listing and product screenshots](archive/003-marketplace-listing.md) | 2026-10-30 | Shared BioViewer logo, App Store-style shots, public GitHub topics, catalog PRs. |
+| [004 — DSH 0.2.2-rc.1 compatibility migration](archive/004-dsh-022-rc1-compat.md) | 2026-11-04 | Move manifests/peers/engines to 0.2.2-rc.1, single-cordis typecheck, anti-drift tests, real-host verify. |
+| [005 — Upstream bump: dsh-better-sidebar 0.30.1 and MolStudio 0.1.5](archive/005-upstream-sidebar-0301.md) | 2026-11-05 | Bump the sidebar peer line, remove the single-cordis workaround, take MolStudio 0.1.5's snapshot flush, real-host verify. |
 
 ## Lifecycle and ownership
 

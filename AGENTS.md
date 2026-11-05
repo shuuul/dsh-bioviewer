@@ -117,7 +117,7 @@ end at `BioViewer`.
 
 ## Host contracts you must not break
 
-These were read out of the installed `dsh-better-sidebar@0.28.2` and
+These were read out of the installed `dsh-better-sidebar` and
 `@molstudio/core`, not assumed. Each one fails quietly if you get it wrong.
 
 1. **`fetchStrategy: 'custom'` means *we* fetch.** The host calls
@@ -185,9 +185,12 @@ These were read out of the installed `dsh-better-sidebar@0.28.2` and
      duplicate-stacking bug. When a studio cannot report a kind the match falls
      back to label-only, so it replaces rather than silently removing nothing.
    Removal and load are serialized together per studio. Queued work uses its
-   effect's AbortSignal so superseded requests never start. Published core 0.1.4
-   batches snapshots on a timer, so the queue yields before reading them; a
-   resolved loader alone does not guarantee its objects are in that snapshot.
+   effect's AbortSignal so superseded requests never start. Core **0.1.5** makes
+   `getSnapshot()` flush a scheduled rebuild, so a read right after an awaited
+   load sees the committed objects; the queue still yields before reading —
+   harmless on 0.1.5 and required on the 0.1.4 build, where snapshots were batched
+   on a timer and a resolved loader alone did not guarantee its objects were in
+   the snapshot.
    Database-tab payload identities must stay stable across theme/parent renders:
    `BioViewer` intentionally uses a new payload identity as the file-reload signal.
 
@@ -227,22 +230,77 @@ These were read out of the installed `dsh-better-sidebar@0.28.2` and
     this file wrongly concluded made `.cmm` unrenderable. MolStudio builds the
     shape node itself: `MolStudio.loadMarkers(set)` adds a set as one object, and
     `setMarkerColor` / `setMarkerSize` drive its display. **This API does not
-    exist in 0.1.3** — the dependency floor is `^0.1.4` and lowering it silently
-    turns every marker model back into an error. `src/client/cmm.ts` therefore
+    exist in 0.1.3** — the API floor is 0.1.4 (the repo pins `^0.1.5`) and
+    lowering it silently turns every marker model back into an error. `src/client/cmm.ts` therefore
     only has to produce `MarkerSet[]`; `loadIntoStudio` hands each set to
     `loadMarkers`, and markers render *beside* other objects, which is the point
     (prompt points over a density map).
 
+## DSH version coupling
+
+The repo targets **DSH 0.2.2-rc.1**, the runtime inside the desktop app:
+`@deepseek-ai/*` devDependencies are `^0.2.2-rc.1`, the
+`@deepseek-ai/dsh-tools` **peer** floor is `^0.2.2-rc.1`, the
+`@deepseek-ai/cordis` peer is `^4.1.0` (the host's own cordis), and `engines.node`
+is `>=24.9` (the host's own minimum). The optional `dsh-better-sidebar` peer spans
+every version the code supports (`>=0.28.0 <0.31.0`, tested against 0.30.1).
+The bump surfaced two resolution traps, one stricter host registration and one
+non-change worth pinning:
+
+- **A pre-release does not satisfy a plain caret range of an older series.**
+  `^0.2.1-rc.1` does *not* admit `0.2.2-rc.1`: npm only lets a pre-release match a
+  comparator set that names a pre-release of its own `[major,minor,patch]` tuple.
+  The peer floor therefore has to move with the host even when the code is
+  source-compatible — otherwise a package manager that enforces peers rejects the
+  plugin on the very host the repo tests against. `tests/contract.test.ts` pins
+  this: every declared peer range must admit the version CI actually installs.
+- **One `cordis` copy is what the typecheck needs.** `dsh-better-sidebar` 0.28.2
+  declared its DSH peers as `^0.2.1-rc.1`, which excludes the 0.2.2 pre-releases,
+  so bun nested a full 0.2.1 closure — its own `@deepseek-ai/cordis` included —
+  under `node_modules/dsh-better-sidebar/`. The package's
+  `declare module '@deepseek-ai/cordis'` augmentation for `ctx.betterSidebar`
+  merged into that nested copy while `src/client/index.tsx` imported the hoisted
+  one, so the augmentation silently disappeared and `tsc` reported `Property
+  'betterSidebar' does not exist on type 'Context'` (a temporary `tsconfig.json`
+  `paths` remap papered over it). **0.30.1 declares `^0.2.2-rc.1` peers**, the
+  nesting is gone, and the remap was removed with the bump. If a future pin
+  reintroduces a closure that excludes the host's version, check
+  `node_modules/dsh-better-sidebar/node_modules/@deepseek-ai/` before reaching for
+  `paths`; the honest fix is a sidebar release whose ranges admit the host.
+- **`ToolsService.register` got stricter.** 0.2.2 throws unless the tool declares
+  `output { schema, render }` and the compiled schema stays inside the enforced
+  JSON-Schema subset (object nodes need explicit `additionalProperties`; in the
+  author DSL every output property carries `required: true`, which `defineTool`
+  compiles to a root `required` array). The plugin already complies, but a fake
+  ctx cannot observe that throw, so `tests/host-tool.test.ts` validates the
+  captured definitions with the installed `assertSupportedJsonSchema`, and a real
+  host run remains the gate after touching `src/host/tool.ts`.
+- **The client shell contract did not move.** The 0.2.2 shell still installs
+  factories via `window.__ModuleLoader__.load({ id, factory })` and still ships
+  React 18.3.1. Its seed table now has **11** module-table entries — the four React
+  specifiers our bundle keeps external (`react`, `react-dom`, `react-dom/client`,
+  `react/jsx-runtime`) plus `@deepseek-ai/cordis`, `zod`,
+  `@tanstack/react-virtual`, `@deepseek-ai/dsh-client-store`,
+  `@deepseek-ai/dsh-client-ui-slots`, `@deepseek-ai/dsh-client-ui-primitives` and
+  `@deepseek-ai/dsh-client-ui-dockkit` (the `YZ()` table in
+  `@deepseek-ai/dsh-web-frontend/dist/assets/index-*.js`). Our external list does
+  not change; the extra seeds are what keep `dsh-better-sidebar` 0.30.1 loadable —
+  it requires `@deepseek-ai/dsh-client-ui-primitives`, which is a seed word but not
+  a boot row. The manifest schema is still `manifestVersion: 1` with
+  `dsh.client.platform: "web"`; 0.2.2 only adds optional fields. No client code
+  change was needed for the bump.
+
 ## Verifying on a real host
 
-Unit tests with a fake ctx cannot see ordering, activation or HTTP behaviour.
+The host must be **0.2.2-rc.1 or newer** (`dsh --version`). Unit tests with a fake
+ctx cannot see ordering, activation or HTTP behaviour.
 The cheap end-to-end check uses a **throwaway** `DSH_HOME` so the user's
 `~/.dsh` is never touched:
 
 ```sh
 export DSH_HOME=/tmp/dsh-verify && mkdir -p "$DSH_HOME"
 dsh plugin --profile web add "link:$PWD"        # auto-appends from dsh.bundle.patch
-dsh plugin --profile web add dsh-better-sidebar@0.28.2
+dsh plugin --profile web add dsh-better-sidebar@0.30.1
 dsh --profile web --dump-config | grep -A2 dsh-bioviewer   # row composed?
 dsh --profile web --no-open --port 59391        # background job; read the token URL
 ```

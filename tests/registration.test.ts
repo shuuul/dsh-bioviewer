@@ -6,7 +6,7 @@
  * plugin hands to better-sidebar.
  *
  * The host-owned extension set and the host's extension matcher are extracted
- * VERBATIM from the installed `dsh-better-sidebar/lib/client.js` (0.28.2), so
+ * VERBATIM from the installed `dsh-better-sidebar/lib/client.js`, so
  * this file fails if the installed package drifts from what the plugin assumes.
  *
  * What this file does NOT prove: that a real cordis fiber activates the plugin,
@@ -34,7 +34,7 @@ const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { na
  * Built-in descriptor ids that must not be re-registered.
  *
  * Tabs come from guide §4.4. Viewers are extracted VERBATIM from the shipped
- * `builtinViewers()` below — the shipped 0.28.2 registers four (markdown, html,
+ * `builtinViewers()` below — the shipped bundle registers four (markdown, html,
  * jsonl, code) while guide §5.4 still documents three, so this list is derived
  * from the artifact and only cross-checked against the guide.
  */
@@ -201,7 +201,7 @@ interface CtxOptions {
 }
 
 /**
- * A fake client context modelling the installed cordis 4.0.5 semantics of
+ * A fake client context modelling the installed cordis 4.1.0 semantics of
  * `ctx.inject(deps, callback)` — "run a callback once the requested services are
  * available" (node_modules/@deepseek-ai/cordis/lib/types/registry.d.ts:111) —
  * and `ctx.effect(body, label?)`.
@@ -221,7 +221,7 @@ function makeCtx(options: CtxOptions): Recorder {
   let insideEffect = false;
 
   const sidebar: Record<string, unknown> = {
-    version: "0.28.2",
+    version: "0.30.1",
     features: ["hostRouteUrl", "openFile"],
     registerTab(descriptor: Descriptor): () => void {
       if (!insideEffect) registrationsOutsideEffect.push(`registerTab(${descriptor.id})`);

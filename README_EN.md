@@ -45,6 +45,8 @@ Every extension also works with a `.gz` suffix (`1abc.pdb.gz`, `map.mrc.gz`, …
 
 ## Install
 
+Requires **DSH 0.2.2-rc.1** or newer (`cordis` 4.1.0, Node.js 24.9+).
+
 ```sh
 dsh plugin --profile web add dsh-bioviewer
 dsh plugin --profile web add dsh-better-sidebar@latest
