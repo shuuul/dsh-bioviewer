@@ -7,6 +7,7 @@ explicit acceptance evidence, or a handoff. Specs record execution, not permanen
 
 | Spec | Status | Outcome |
 | --- | --- | --- |
+| [007 — Upstream bump: MolStudio 0.1.7 pipeline and downsample work](007-molstudio-017-wasm-pipeline.md) | Active | Bump to 0.1.7, re-measure 0.1.5 vs 0.1.6 vs 0.1.7 end to end, and decide whether the plugin keeps it. |
 
 ## Archived specs
 

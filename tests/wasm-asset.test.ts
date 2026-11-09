@@ -61,7 +61,23 @@ describe("embedded MolStudio surface-engine assets", () => {
   test("the embedded module instantiates and exposes the marching-cubes ABI", async () => {
     const { instance } = await WebAssembly.instantiate(wasmBytes, {});
     const exports = instance.exports as Record<string, unknown>;
-    const functions = ["grid_begin", "grid_commit", "grid_ptr", "grid_len", "mc_mesh", "mc_lines", "reset", "mesh_vertices", "mesh_indices"];
+    // 0.1.7 adds the box-downsample ABI (ds_*) that `downsampleGridRemote` drives
+    // in the worker; 0.1.6 only had the marching-cubes grid/mesh calls.
+    const functions = [
+      "grid_begin",
+      "grid_commit",
+      "grid_ptr",
+      "grid_len",
+      "mc_mesh",
+      "mc_lines",
+      "reset",
+      "mesh_vertices",
+      "mesh_indices",
+      "ds_dims",
+      "ds_data",
+      "ds_from_staging",
+      "ds_run",
+    ];
     expect(functions.filter((name) => typeof exports[name] !== "function")).toEqual([]);
     expect(exports.memory instanceof WebAssembly.Memory).toBe(true);
     console.log(`[wasm] engine exports: ${Object.keys(exports).sort().join(", ")}`);
@@ -72,6 +88,13 @@ describe("embedded MolStudio surface-engine assets", () => {
     // would fail in the worker before it could post `ready`.
     expect(() => new Function(MOLSTUDIO_SURFACE_WORKER_SOURCE)).not.toThrow();
     for (const marker of ["self.onmessage", '"init"', '"mesh"', '"lines"', '"ready"']) {
+      expect(MOLSTUDIO_SURFACE_WORKER_SOURCE).toContain(marker);
+    }
+    // 0.1.7 runs the oversized-grid box downsample inside this same worker
+    // (`downsampleGridRemote`, dist/compute/types.js). A stale copy regenerated
+    // from an older package would silently push that work back onto the main
+    // thread — no error, just the fixed cost we just measured away.
+    for (const marker of ['"downsample"', '"downsampled"']) {
       expect(MOLSTUDIO_SURFACE_WORKER_SOURCE).toContain(marker);
     }
   });

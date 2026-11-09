@@ -3,7 +3,7 @@
  * Regenerates `src/client/generated/molstudio-assets.ts` from the installed
  * `@molstudio/core`.
  *
- * Why this exists: 0.1.6 ships a WebAssembly isosurface engine whose packaged
+ * Why this exists: 0.1.6+ ships a WebAssembly isosurface engine whose packaged
  * defaults resolve their scripts relative to `import.meta.url`
  * (`dist/compute/wasm-core.js`: `new URL("../assets/molstudio-wasm-engine.wasm", import.meta.url)`;
  * `dist/compute/worker-engine.js`: `new Worker(new URL("./worker.js", import.meta.url), { type: "module" })`).

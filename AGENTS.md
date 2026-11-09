@@ -114,7 +114,7 @@ end at `BioViewer`.
 | `src/client/cmm.ts` | Pure, DOM-free `.cmm` parser producing `@molstudio/core`'s `MarkerSet[]`. |
 | `src/client/file-view.tsx` | The viewer's leaf components (`BioFileView`, `StructureTabView`, `BioNotice`). Every payload carries a `kind`, so there is one render path. |
 | `src/client/theme.ts` | DSH colour-scheme detection (mirrors the host's own logic). |
-| `src/client/surface-engine.ts` | The 0.1.6 wasm surface-engine wiring: `<Studio studioOptions>` gets an embedded data-URL wasm plus a blob-URL worker, with the packaged defaults left dead. |
+| `src/client/surface-engine.ts` | The 0.1.6+ wasm surface-engine wiring: `<Studio studioOptions>` gets an embedded data-URL wasm plus a blob-URL worker, with the packaged defaults left dead. |
 | `src/client/generated/molstudio-assets.ts` | Generated wasm bytes, worker source and their digests. Regenerate with `bun run sync:molstudio-assets`; never edit by hand. |
 | `scripts/build.ts` | The build. Produces both halves, the `__ModuleLoader__` wrapper, and defines an inert `import.meta.url` so no builder path lands in the bundle. |
 | `scripts/sync-molstudio-assets.ts` | Regenerates the embedded MolStudio wasm/worker assets from `node_modules`; `tests/wasm-asset.test.ts` enforces the copies. |
@@ -234,15 +234,15 @@ These were read out of the installed `dsh-better-sidebar` and
     this file wrongly concluded made `.cmm` unrenderable. MolStudio builds the
     shape node itself: `MolStudio.loadMarkers(set)` adds a set as one object, and
     `setMarkerColor` / `setMarkerSize` drive its display. **This API does not
-    exist in 0.1.3** — markers need ≥ 0.1.4 and the repo pins `^0.1.6` (the wasm
-    wiring below needs 0.1.6); lowering the pin silently turns every marker model
+    exist in 0.1.3** — markers need ≥ 0.1.4 and the repo pins `^0.1.7` (the wasm
+    wiring below needs 0.1.6+); lowering the pin silently turns every marker model
     back into an error and disables the wasm engine. `src/client/cmm.ts` therefore
     only has to produce `MarkerSet[]`; `loadIntoStudio` hands each set to
     `loadMarkers`, and markers render *beside* other objects, which is the point
     (prompt points over a density map).
 
-13. **The wasm surface engine is embedded, never routed.** `@molstudio/core` 0.1.6
-    builds its 54 KB `molstudio-wasm-engine.wasm` and its worker from
+13. **The wasm surface engine is embedded, never routed.** `@molstudio/core` 0.1.6+
+    builds its 55 KB `molstudio-wasm-engine.wasm` and its worker from
     `import.meta.url` (`dist/compute/wasm-core.js`, `dist/compute/worker-engine.js`'s
     `createDefaultWorker`). Our client half is one classic script (`import.meta` is
     not a module) and the shell serves no sibling asset, while Bun *rewrites*
@@ -256,7 +256,15 @@ These were read out of the installed `dsh-better-sidebar` and
     installed package moves without a re-sync, so a MolStudio bump is
     `bun install` + `bun run sync:molstudio-assets`. `StudioProps.studioOptions`
     and `MolStudioOptions.surfaceEngine` do not exist before 0.1.6, so the pin is
-    `^0.1.6` — lowering it is a type error (and forcing it disables the engine).
+    `^0.1.7` — lowering it is a type error (and forcing it disables the engine).
+    **0.1.7 keeps every default and hook the same** (both asset URLs still resolve
+    from `import.meta.url`, `SurfaceEngineAssets` is unchanged), but it routes the
+    oversized-grid downsample through the same worker
+    (`downsampleGridRemote`, new `downsample`/`downsampled` messages) and makes the
+    engine session lazy (`gpuIsosurfacePath` decides the eager start). Two
+    consequences for this repo: the embedded worker *must* be regenerated on every
+    bump or the downsample silently falls back to the main thread, and `preferMainThread`
+    removes that off-thread tier — keep the worker tier enabled.
 
 ## DSH version coupling
 
