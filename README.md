@@ -13,6 +13,24 @@
 - 文件被改写时**替换**重载，不叠加
 - 模型可用 `bio_open` 打开文件或数据库条目（`pdb:1cbs`、`alphafold:P00533`、`emdb:EMD-1234`）
 
+## 密度图加速（Wasm）
+
+从 [`@molstudio/core`](https://www.npmjs.com/package/@molstudio/core) 0.1.6 起，密度图的等值面改由 MolStudio 自带的 WebAssembly marching-cubes 内核重建。插件把这份 54 KB 的 `molstudio-wasm-engine.wasm` 和它的 worker 一起以 base64 内嵌进 `lib/client.js`，随插件分发：不新增资源路由，不依赖 `node_modules`、CDN 或构建机路径，离线可用。运行时先试 worker 里的引擎（不占界面线程），没有 worker 就用主线程里的同一份 wasm，两者都不可用才回落到 Mol\* 自己的等值面。资产由 `bun run sync:molstudio-assets` 从已安装的 `@molstudio/core` 重新生成。
+
+同样的输入、同样的输出几何，直接对比两套 marching cubes（Chrome 157 / V8，单线程，3 次取中位数；三角形数完全一致）：
+
+| 网格 | Mol\* JS 内核 | wasm 内核 | 倍数 |
+| --- | --- | --- | --- |
+| 96³ | 35 ms | 14 ms | 2.5× |
+| 128³ | 74 ms | 35 ms | 2.1× |
+| 192³ | 271 ms | 117 ms | 2.3× |
+| 240³ | 555 ms | 261 ms | 2.1× |
+| 290³ | 1227 ms | 365 ms | 3.4× |
+
+**但打开一张图的端到端时间并没有变快。** 同一台机器上首帧耗时（0.1.5 → 0.1.6 + wasm）：64³ 密度图 1.73 s → 2.46 s，112³ 1.59 s → 2.33 s，290³ 1.92 s → 2.69 s。等值面重建只占打开流程的一小部分，而 0.1.6 的体数据管线更重；此外它让周期网格（EMDB 密度图全部如此）不再走 Mol\* 的 GPU 等值面，290³ 这类大图还会先降采样到 145³ 再重建。wasm 在 0.1.6 内部仍然有价值：同一张 290³，0.1.6 自己的 JS 回落要 2.93 s，接上 wasm 后 2.01 s（-31%）。
+
+测量环境是 headless Chrome + 软件 GL（SwiftShader），不是你的显卡：真实 GPU 上 0.1.5 的 GPU 等值面只会更快，差距不会缩小；只有当网格大到连 0.1.5 也不得不用 CPU 重建时，wasm 才明显赢。
+
 ## 截图
 
 ![Cas9 的蛋白、RNA 与 DNA](docs/screenshots/nucleic-acids.jpeg)

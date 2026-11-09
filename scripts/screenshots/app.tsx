@@ -11,6 +11,7 @@ import { Studio, type StudioTheme } from "@molstudio/react";
 import type { MolStudio, StudioObject } from "@molstudio/core";
 import studioCss from "@molstudio/react/styles.css";
 import browserCss from "../../src/client/browser.css";
+import { STUDIO_OPTIONS } from "../../src/client/surface-engine";
 import frameCss from "./frame.css";
 
 const ICON = "./icon.png";
@@ -341,7 +342,7 @@ function CaptureApp(): ReactElement {
               {detail}
             </div>
           )}
-          <Studio theme={scene.theme} locale="en" onReady={onReady} onError={(error) => {
+          <Studio theme={scene.theme} locale="en" onReady={onReady} studioOptions={STUDIO_OPTIONS} onError={(error) => {
             setStatus("error");
             setDetail(error.message);
             document.body.dataset.error = error.message;

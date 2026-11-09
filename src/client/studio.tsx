@@ -40,6 +40,7 @@ import type { StudioLike } from "./load";
 import type { StudioLocale } from "./locale";
 import type { MarkersPayload, StructurePayload, ViewerPayload } from "./payload";
 import { registerStudio } from "./studios";
+import { STUDIO_OPTIONS } from "./surface-engine";
 import { useViewerLocale } from "./use-locale";
 
 export interface BioViewerProps {
@@ -160,6 +161,7 @@ export function BioViewer({ payload, theme, sessionId }: BioViewerProps): ReactE
           onLocaleChange={onLocaleChange}
           onReady={handleReady}
           onError={handleStudioError}
+          studioOptions={STUDIO_OPTIONS}
         />
         {overlay !== null && <div style={OVERLAY_STYLE}>{overlay}</div>}
         {studioError !== null && (

@@ -29,6 +29,7 @@ Mol\*.
 | `bun run check:specs` | Validate tracked spec structure, lifecycle, IDs and index |
 | `bun run verify:fast` | specs → lint → typecheck → build → test. **The gate**: `.husky/pre-push` and CI both run exactly this |
 | `bun run screenshots` | Rebuild App Store-style product shots into `docs/screenshots/` (needs local Chrome + ffmpeg) |
+| `bun run sync:molstudio-assets` | Regenerate `src/client/generated/molstudio-assets.ts` (embedded wasm + worker) from the installed `@molstudio/core`; the gate fails if it is stale |
 | `bun run build --no-minify` | Unminified bundle, for reading the emitted code |
 
 Hooks: `pre-commit` runs `oxlint` on staged files (seconds, no tests);
@@ -113,7 +114,10 @@ end at `BioViewer`.
 | `src/client/cmm.ts` | Pure, DOM-free `.cmm` parser producing `@molstudio/core`'s `MarkerSet[]`. |
 | `src/client/file-view.tsx` | The viewer's leaf components (`BioFileView`, `StructureTabView`, `BioNotice`). Every payload carries a `kind`, so there is one render path. |
 | `src/client/theme.ts` | DSH colour-scheme detection (mirrors the host's own logic). |
-| `scripts/build.ts` | The build. Produces both halves and the `__ModuleLoader__` wrapper. |
+| `src/client/surface-engine.ts` | The 0.1.6 wasm surface-engine wiring: `<Studio studioOptions>` gets an embedded data-URL wasm plus a blob-URL worker, with the packaged defaults left dead. |
+| `src/client/generated/molstudio-assets.ts` | Generated wasm bytes, worker source and their digests. Regenerate with `bun run sync:molstudio-assets`; never edit by hand. |
+| `scripts/build.ts` | The build. Produces both halves, the `__ModuleLoader__` wrapper, and defines an inert `import.meta.url` so no builder path lands in the bundle. |
+| `scripts/sync-molstudio-assets.ts` | Regenerates the embedded MolStudio wasm/worker assets from `node_modules`; `tests/wasm-asset.test.ts` enforces the copies. |
 
 ## Host contracts you must not break
 
@@ -230,11 +234,29 @@ These were read out of the installed `dsh-better-sidebar` and
     this file wrongly concluded made `.cmm` unrenderable. MolStudio builds the
     shape node itself: `MolStudio.loadMarkers(set)` adds a set as one object, and
     `setMarkerColor` / `setMarkerSize` drive its display. **This API does not
-    exist in 0.1.3** — the API floor is 0.1.4 (the repo pins `^0.1.5`) and
-    lowering it silently turns every marker model back into an error. `src/client/cmm.ts` therefore
+    exist in 0.1.3** — markers need ≥ 0.1.4 and the repo pins `^0.1.6` (the wasm
+    wiring below needs 0.1.6); lowering the pin silently turns every marker model
+    back into an error and disables the wasm engine. `src/client/cmm.ts` therefore
     only has to produce `MarkerSet[]`; `loadIntoStudio` hands each set to
     `loadMarkers`, and markers render *beside* other objects, which is the point
     (prompt points over a density map).
+
+13. **The wasm surface engine is embedded, never routed.** `@molstudio/core` 0.1.6
+    builds its 54 KB `molstudio-wasm-engine.wasm` and its worker from
+    `import.meta.url` (`dist/compute/wasm-core.js`, `dist/compute/worker-engine.js`'s
+    `createDefaultWorker`). Our client half is one classic script (`import.meta` is
+    not a module) and the shell serves no sibling asset, while Bun *rewrites*
+    `import.meta.url` to the build machine's absolute `file://` path — so both
+    packaged defaults point at nothing and the engine silently falls back to
+    Mol*'s parsed isosurface (no error anywhere). `scripts/sync-molstudio-assets.ts`
+    therefore generates `src/client/generated/molstudio-assets.ts` (wasm base64,
+    worker IIFE, digests), `src/client/surface-engine.ts` turns them into a data
+    URL plus a blob-URL `makeWorker`, and `src/client/studio.tsx` passes
+    `studioOptions={STUDIO_OPTIONS}`. `tests/wasm-asset.test.ts` fails when the
+    installed package moves without a re-sync, so a MolStudio bump is
+    `bun install` + `bun run sync:molstudio-assets`. `StudioProps.studioOptions`
+    and `MolStudioOptions.surfaceEngine` do not exist before 0.1.6, so the pin is
+    `^0.1.6` — lowering it is a type error (and forcing it disables the engine).
 
 ## DSH version coupling
 
@@ -366,6 +388,12 @@ this one exists only to exercise the host half and is torn down immediately.
   answer only ever settles through the abort signal it is handed, so dropping it
   hangs the loop forever and the test never finishes. Every loop test also carries
   a hard 5 s timeout for the same reason.
+- `tests/wasm-asset.test.ts` pins the embedded wasm/worker copies to the
+  installed `@molstudio/core` (version, byte length, sha256, worker input hashes),
+  instantiates the module's marching-cubes ABI, and checks the worker source is a
+  classic script that speaks the protocol. `tests/build.test.ts`'s C4 block then
+  proves the built bundle carries exactly one wasm data URL and no `file:///` or
+  builder path. After a MolStudio bump: `bun run sync:molstudio-assets`.
 - `tests/host-registry.test.ts` covers the queue semantics, including the race
   where a waiter's timeout already fired but its `finally` has not run yet — the
   request must be **queued**, not handed to that dead waiter (`delivered: true`

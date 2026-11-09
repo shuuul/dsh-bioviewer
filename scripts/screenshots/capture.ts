@@ -10,6 +10,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { BunPlugin } from "bun";
+import { INERT_MODULE_URL } from "../inert-module-url";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const outDir = join(root, ".verification", "screenshots");
@@ -42,7 +43,14 @@ async function bundle(): Promise<void> {
     minify: true,
     sourcemap: "none",
     plugins: [cssAsText],
-    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    define: {
+      "process.env.NODE_ENV": JSON.stringify("production"),
+      // Same reason as `scripts/build.ts`'s client half: without it Bun reads the
+      // packaged `new Worker(new URL("./worker.js", import.meta.url))` default as
+      // a worker entrypoint and fails with "Multiple files share the same output
+      // path". The page passes its own assets, so the default is dead anyway.
+      "import.meta.url": JSON.stringify(INERT_MODULE_URL),
+    },
     naming: "app.js",
     outdir: outDir,
   });

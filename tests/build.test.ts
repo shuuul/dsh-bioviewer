@@ -37,6 +37,7 @@ import {
 } from "typescript";
 
 import { BIO_EXTENSIONS } from "../src/shared/formats";
+import { MOLSTUDIO_WASM_BASE64, MOLSTUDIO_WASM_BYTES } from "../src/client/generated/molstudio-assets";
 
 const root = join(import.meta.dir, "..");
 const libDir = join(root, "lib");
@@ -470,6 +471,47 @@ describe("C3 client bundle purity", () => {
     const src = readArtifact(clientHalf);
     expect(src).not.toMatch(/\.css["'`]/);
     expect(src).not.toMatch(/\/plugins\/[^"']*\.css/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C4 — the wasm surface engine is carried by the bundle
+// ---------------------------------------------------------------------------
+
+describe("C4 embedded surface-engine assets", () => {
+  // The plugin owns no asset route (AGENTS.md, host contracts): the 0.1.6 wasm
+  // module and its worker have to travel inside `client.js`, or the engine
+  // silently degrades to Mol*'s slower parsed isosurface with no error anywhere.
+  // Bun keeps ``data:…,${base64}`` as a concatenation, so the payload is located
+  // by its generated constant rather than by the URL prefix.
+  const WASM_URL_PREFIX = "data:application/wasm;base64,";
+
+  test("the bundle carries exactly one wasm data URL, and it is a wasm module", () => {
+    const src = readArtifact(clientHalf);
+    expect(src.split(WASM_URL_PREFIX).length - 1).toBe(1);
+    const at = src.indexOf(MOLSTUDIO_WASM_BASE64);
+    expect(at).toBeGreaterThan(0);
+    const module = Buffer.from(src.slice(at, at + MOLSTUDIO_WASM_BASE64.length), "base64");
+    console.log(`[C4] embedded wasm module ${module.byteLength} B, base64 ${Math.round(MOLSTUDIO_WASM_BASE64.length / 1024)} KiB`);
+    expect(module.byteLength).toBe(MOLSTUDIO_WASM_BYTES);
+    expect(module.subarray(0, 4).toString("latin1")).toBe("\u0000asm");
+  });
+
+  test("the bundle ships no build-machine path", () => {
+    const src = readArtifact(clientHalf);
+    // Bun would otherwise inline `import.meta.url` as a `file:///Users/<builder>/…`
+    // URL taken from the 0.1.6 compute modules; scripts/build.ts defines an inert
+    // URL instead so the artifact stays portable and the dead defaults stay dead.
+    expect(src).not.toMatch(/file:\/\/\//);
+    expect(src).not.toContain(root);
+  });
+
+  test("the worker tier's script is embedded, not fetched", () => {
+    const src = readArtifact(clientHalf);
+    // A blob URL over the embedded source is the only worker this bundle can
+    // make: the packaged default is a module worker beside the package root.
+    expect(src).toContain("createObjectURL");
+    expect(src).not.toMatch(/\/plugins\/[^"']*\.js/);
   });
 });
 

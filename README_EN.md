@@ -18,6 +18,40 @@ stack as the [BioViewer VS Code extension](https://github.com/shuuul/bioviewer).
 - Reloads **replace** the old object when the file is rewritten
 - The model can call `bio_open` for a file or a database entry (`pdb:1cbs`, `alphafold:P00533`, `emdb:EMD-1234`)
 
+## Density-map acceleration (Wasm)
+
+Since [`@molstudio/core`](https://www.npmjs.com/package/@molstudio/core) 0.1.6, density-map
+isosurfaces are rebuilt by a WebAssembly marching-cubes kernel shipped inside MolStudio.
+The plugin embeds that 54 KB `molstudio-wasm-engine.wasm` together with its worker as
+base64 in `lib/client.js`, so it travels with the plugin: no extra asset route, no
+`node_modules`, CDN or build-machine path, and it works offline. At runtime the worker
+tier is tried first (the UI thread stays free), then the same wasm on the main thread,
+and only then Mol\*'s own isosurface. `bun run sync:molstudio-assets` regenerates the
+assets from the installed `@molstudio/core`.
+
+Same input, same output geometry, the two marching-cubes implementations head to head
+(Chrome 157 / V8, single thread, median of 3, identical triangle counts):
+
+| Grid | Mol\* JS kernel | wasm kernel | Speedup |
+| --- | --- | --- | --- |
+| 96³ | 35 ms | 14 ms | 2.5× |
+| 128³ | 74 ms | 35 ms | 2.1× |
+| 192³ | 271 ms | 117 ms | 2.3× |
+| 240³ | 555 ms | 261 ms | 2.1× |
+| 290³ | 1227 ms | 365 ms | 3.4× |
+
+**Opening a map end to end did not get faster.** On the same machine, time to first
+frame (0.1.5 → 0.1.6 + wasm): 1.73 s → 2.46 s for a 64³ map, 1.59 s → 2.33 s for 112³,
+1.92 s → 2.69 s for 290³. Meshing is a small part of opening a volume, and 0.1.6's
+volume pipeline is heavier; it also keeps periodic grids — every EMDB map — off Mol\*'s
+GPU isosurface, and downsamples large grids (290³ becomes 145³) before meshing. Inside
+0.1.6 the engine still pays off: on the same 290³ map its own JS fallback takes 2.93 s
+against 2.01 s with wasm (-31%).
+
+The measurement ran in headless Chrome with software GL (SwiftShader), not on your GPU:
+on real hardware 0.1.5's GPU isosurface is faster still, so the gap does not shrink;
+wasm wins clearly only when a grid is large enough that 0.1.5 has to mesh on the CPU too.
+
 ## Screenshots
 
 ![Protein, RNA and DNA of Cas9 in one BioViewer tab](docs/screenshots/nucleic-acids.jpeg)

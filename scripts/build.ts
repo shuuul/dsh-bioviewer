@@ -26,6 +26,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { INERT_MODULE_URL } from "./inert-module-url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const pkg = (await Bun.file(join(root, "package.json")).json()) as { name: string };
@@ -79,7 +80,10 @@ async function buildClientHalf(): Promise<{ size: number; path: string }> {
     sourcemap: "none",
     external: CLIENT_EXTERNALS,
     plugins: [cssAsText],
-    define: { "process.env.NODE_ENV": JSON.stringify(minify ? "production" : "development") },
+    define: {
+      "process.env.NODE_ENV": JSON.stringify(minify ? "production" : "development"),
+      "import.meta.url": JSON.stringify(INERT_MODULE_URL),
+    },
   });
   if (!result.success) {
     for (const log of result.logs) console.error(log);
