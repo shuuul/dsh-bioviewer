@@ -144,20 +144,31 @@ Exact commands, scenarios, results and remaining unverified areas. Include
   headless Chrome in this sandboxed session only starts with `--no-sandbox`
   (otherwise its GPU process dies with `exit_code=6`, SIGTRAP); that is
   environmental and unrelated to 0.1.6.
-- Benchmark (WS-02, `.verification/wasm-bench/tools/run.ts --reps 5 --gpu swiftshader`,
-  headless Chrome 157 + SwiftShader, evidence in
-  `specs/archive/evidence/molstudio-016-wasm-benchmark.md`): first-frame time on
-  identical real EMDB maps, 0.1.5 → 0.1.6+wasm, is **1.73 s → 2.46 s** (EMD-1832,
-  64³), **1.59 s → 2.33 s** (EMD-3318, 112³) and **1.92 s → 2.69 s** (EMD-10088,
-  290³) — i.e. no end-to-end speedup, 30-40% slower, because 0.1.6 keeps periodic
-  grids off Mol*'s GPU isosurface (`!needsWrap`) and downsamples 290³ to 145³.
-  Inside 0.1.6 the engine does pay: 2.93 s → 2.01 s on the 290³ map (-31%).
-- Isolated meshing (Lead, `.verification/probe-lead/run-mesh.ts`, Chrome/V8,
-  identical grids and triangle counts, median of 3): wasm is **2.1-3.4× faster**
-  than Mol*'s `computeMarchingCubesMesh` — 96³ 35→14 ms, 128³ 74→35 ms, 192³
-  271→117 ms, 240³ 555→261 ms, 290³ 1,227→365 ms. Meshing is a few hundred
-  milliseconds at most, against ~1.5 s of fixed volume-pipeline cost per load,
-  which is why the kernel speedup does not surface as a faster open.
+- Benchmark (WS-02, `.verification/wasm-bench/tools/run.ts --reps 5 --append` and
+  `--huge --reps 3 --append`, 31 scenarios, 0 failed reps, fresh document per rep,
+  headless Chrome 157 + SwiftShader; evidence in
+  `specs/archive/evidence/molstudio-016-wasm-benchmark.md`): median `loadVolume()`
+  on identical real EMDB maps, 0.1.5 → 0.1.6+wasm, is **1.44 s → 2.14 s**
+  (EMD-1832, 64³), **1.49 s → 2.06 s** (EMD-3318, 112³), **0.61 s → 2.22 s**
+  (EMD-10088, 290³) and **4.26 s → 5.41 s** (EMD-10087, 500³). No end-to-end
+  speedup at any size: 0.1.6 carries ~2 s of fixed pipeline cost per load, keeps
+  periodic grids off Mol*'s GPU isosurface (`!needsWrap`), and unconditionally
+  downsamples 290³ → 145³ and 500³ → 250³ (`downsampleFactorFor`,
+  `dist/volume/operations.js:53`; no host opt-out in `SurfaceEngineAssets`).
+  Because the relative iso level is re-resolved on the downsampled statistics
+  (2σ 0.0157 → 0.0143) the rendered surface differs: 841 k → 112 k triangles on
+  EMD-10088. Inside 0.1.6 the engine does pay: 2.31 s → 2.22 s on EMD-10088 and
+  6.00 s → 5.41 s on EMD-10087.
+- Isolated kernels (`A.3` of the same harness, identical grid, iso level and
+  triangle count): wasm is **4.6-22.8× faster** than Mol*'s
+  `computeMarchingCubesMesh` on the grids 0.1.6 actually meshes — 65³ 9→<1 ms,
+  113³ 35→4 ms, 146³ 58→6 ms, 251³ 440→97 ms. A Lead cross-check on noisy grids
+  (`.verification/probe-lead/run-mesh.ts`, identical triangle counts) gives
+  2.1-3.4× at 96³-290³ (10 M triangles at 290³): the ratio floor comes from
+  memory bandwidth once millions of triangles are involved. Meshing tracks
+  triangle count, not voxel count, and stays a few hundred milliseconds against
+  the ~2 s fixed pipeline cost, which is why the kernel win does not reach the
+  user.
 - `--no-sandbox` note: headless Chrome in this sandboxed session only starts with
   it (its GPU process otherwise dies with `exit_code=6`, SIGTRAP); environmental,
   unrelated to 0.1.6.
@@ -191,13 +202,15 @@ define in both browser builds; a digest/ABI anti-drift test
 (`tests/wasm-asset.test.ts`) and a bundle-level test (C4 in `tests/build.test.ts`);
 README pair section, `AGENTS.md` contract 13 and testing notes.
 
-Measured speedup: **the wasm kernel is 2.1-3.4× faster than Mol*'s JS marching
-cubes on identical grids, but opening a density map is not faster.** First frame
-went 1.73 s → 2.46 s (64³), 1.59 s → 2.33 s (112³) and 1.92 s → 2.69 s (290³)
-versus 0.1.5, because meshing is a small slice of a ~1.5 s volume pipeline, 0.1.6
-refuses Mol*'s GPU isosurface for periodic volumes (every EMDB map), and large
-grids are downsampled first. Within 0.1.6 the engine is worth -31% on a 290³ map
-(2.93 s → 2.01 s) and it keeps meshing off the UI thread.
+Measured speedup: **the wasm kernel is 4.6-22.8× faster than Mol*'s JS marching
+cubes on identical work (2.1-3.4× on grids with millions of triangles), but
+opening a density map is not faster — it is slower.** Median `loadVolume()` went
+1.44 s → 2.14 s (EMD-1832, 64³), 1.49 s → 2.06 s (EMD-3318, 112³), 0.61 s →
+2.22 s (EMD-10088, 290³) and 4.26 s → 5.41 s (EMD-10087, 500³) versus 0.1.5.
+Three causes stack: ~2 s of fixed pipeline cost per load, no GPU isosurface path
+for periodic volumes (every EMDB map), and an unconditional 2× downsample of
+grids above the texture limit, which also changes the rendered surface because
+the relative iso level is re-resolved on the downsampled statistics.
 
 Remaining unverified: numbers were taken with software GL (SwiftShader) in headless
 Chrome, not on the user's GPU — on real hardware 0.1.5's GPU path is faster still,
@@ -256,7 +269,9 @@ Append entries; do not rewrite another worker's record.
   acceleration" section (same mechanism prose, same measured tables);
   `specs/archive/evidence/molstudio-016-wasm-benchmark.md` records the raw
   end-to-end and isolated tables, the environment and the rerun commands.
-- Evidence (WS-02, bench, 5 reps, headless Chrome 157 + SwiftShader): first frame
+- Evidence (WS-02, bench, 5 reps, headless Chrome 157 + SwiftShader; **the
+  preliminary 3-map numbers below were superseded by the final 31-scenario run
+  with a fresh document per rep — see Verification**): first frame
   0.1.5 → 0.1.6+wasm = 1.73 → 2.46 s (64³), 1.59 → 2.33 s (112³), 1.92 → 2.69 s
   (290³); 0.1.6 without the engine 2.93 s on 290³ → 2.01 s with it. Tier audit: the
   packaged defaults 404 and silently yield no engine, the shipped blob-worker +

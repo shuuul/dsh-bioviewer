@@ -29,24 +29,45 @@ tier is tried first (the UI thread stays free), then the same wasm on the main t
 and only then Mol\*'s own isosurface. `bun run sync:molstudio-assets` regenerates the
 assets from the installed `@molstudio/core`.
 
-Same input, same output geometry, the two marching-cubes implementations head to head
-(Chrome 157 / V8, single thread, median of 3, identical triangle counts):
+Same grid, same iso level, same triangle count, the two marching-cubes implementations
+head to head (Chrome 157 / V8, single thread, real EMDB data):
 
-| Grid | Mol\* JS kernel | wasm kernel | Speedup |
-| --- | --- | --- | --- |
-| 96³ | 35 ms | 14 ms | 2.5× |
-| 128³ | 74 ms | 35 ms | 2.1× |
-| 192³ | 271 ms | 117 ms | 2.3× |
-| 240³ | 555 ms | 261 ms | 2.1× |
-| 290³ | 1227 ms | 365 ms | 3.4× |
+| Grid meshed | Triangles | Mol\* JS kernel | wasm kernel | Speedup |
+| --- | --- | --- | --- | --- |
+| 65³ | 10 k | 9 ms | <1 ms | 22.8× |
+| 113³ | 117 k | 35 ms | 4 ms | 9.2× |
+| 146³ | 112 k | 58 ms | 6 ms | 9.1× |
+| 251³ | 3.2 M | 440 ms | 97 ms | 4.6× |
 
-**Opening a map end to end did not get faster.** On the same machine, time to first
-frame (0.1.5 → 0.1.6 + wasm): 1.73 s → 2.46 s for a 64³ map, 1.59 s → 2.33 s for 112³,
-1.92 s → 2.69 s for 290³. Meshing is a small part of opening a volume, and 0.1.6's
-volume pipeline is heavier; it also keeps periodic grids — every EMDB map — off Mol\*'s
-GPU isosurface, and downsamples large grids (290³ becomes 145³) before meshing. Inside
-0.1.6 the engine still pays off: on the same 290³ map its own JS fallback takes 2.93 s
-against 2.01 s with wasm (-31%).
+The denser the surface, the closer the ratio gets to its floor: about 2-5× once a grid
+produces millions of triangles (a 10-million-triangle noise grid measured 3.4×).
+
+**Opening a map did not get faster — it got slower.** Same load path (`loadVolume`,
+median of 3-5):
+
+| Map | Grid | 0.1.5 | 0.1.6 + wasm | Grid 0.1.6 actually meshes |
+| --- | --- | --- | --- | --- |
+| EMD-1832 | 64³ | 1.44 s | 2.14 s | 64³ |
+| EMD-3318 | 112³ | 1.49 s | 2.06 s | 112³ |
+| EMD-10088 | 290³ | **0.61 s** | 2.22 s | **145³** (2× downsample) |
+| EMD-10087 | 500³ | **4.26 s** | 5.41 s | **250³** (2× downsample) |
+
+Three effects stack up:
+
+1. 0.1.6 pays about 2 s of fixed pipeline cost per load (64³ and 250³ differ by only
+   0.3 s), which swamps the few hundred milliseconds meshing saves;
+2. for periodic grids — every EMDB map — 0.1.6 **no longer uses Mol\*'s GPU
+   isosurface** and always meshes on the CPU;
+3. grids above the texture limit are **downsampled unconditionally** (290³ → 145³,
+   500³ → 250³; a host cannot turn it off), and the relative iso level is resolved
+   against the downsampled statistics (2σ 0.0157 → 0.0143), so it renders a different
+   surface — 841 k triangles collapse to 112 k on EMD-10088.
+
+The measurement ran in headless Chrome with software GL (SwiftShader), not on your GPU.
+The 1.4 s 0.1.5 rows above pay for software rasterising Mol\*'s GPU path (the same mesh
+costs 9 ms of CPU marching cubes), so do not read the 64³/112³ gap as a real-GPU
+regression; on real hardware 0.1.5 is faster still. Points 2 and 3 do not depend on the
+GPU at all.
 
 The measurement ran in headless Chrome with software GL (SwiftShader), not on your GPU:
 on real hardware 0.1.5's GPU isosurface is faster still, so the gap does not shrink;
