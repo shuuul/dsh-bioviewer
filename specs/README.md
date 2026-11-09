@@ -7,7 +7,6 @@ explicit acceptance evidence, or a handoff. Specs record execution, not permanen
 
 | Spec | Status | Outcome |
 | --- | --- | --- |
-| [007 — Upstream bump: MolStudio 0.1.7 pipeline and downsample work](007-molstudio-017-wasm-pipeline.md) | Active | Bump to 0.1.7, re-measure 0.1.5 vs 0.1.6 vs 0.1.7 end to end, and decide whether the plugin keeps it. |
 
 ## Archived specs
 
@@ -19,6 +18,8 @@ explicit acceptance evidence, or a handoff. Specs record execution, not permanen
 | [004 — DSH 0.2.2-rc.1 compatibility migration](archive/004-dsh-022-rc1-compat.md) | 2026-11-04 | Move manifests/peers/engines to 0.2.2-rc.1, single-cordis typecheck, anti-drift tests, real-host verify. |
 | [005 — Upstream bump: dsh-better-sidebar 0.30.1 and MolStudio 0.1.5](archive/005-upstream-sidebar-0301.md) | 2026-11-05 | Bump the sidebar peer line, remove the single-cordis workaround, take MolStudio 0.1.5's snapshot flush, real-host verify. |
 | [006 — Upstream bump: MolStudio 0.1.6 wasm surface engine](archive/006-molstudio-016-wasm.md) | 2026-11-09 | Ship the 0.1.6 wasm isosurface engine in the client bundle, measure 0.1.5 vs 0.1.6 end to end and the kernel in isolation. |
+| [007 — Upstream bump: MolStudio 0.1.7 pipeline and downsample work](archive/007-molstudio-017-wasm-pipeline.md) | 2026-11-09 | 0.1.7 wiring is real; open time on periodic maps does not beat 0.1.5. Keep wiring; 0.1.8 is the fix. |
+| [008 — Upstream bump: MolStudio 0.1.8 GPU path](archive/008-molstudio-018-gpu-path.md) | 2026-11-09 | 0.1.8 bump; hardware GPU 0.1.5 vs shipped; 300³ solid open at parity, iso-drag ~17 ms |
 
 ## Lifecycle and ownership
 

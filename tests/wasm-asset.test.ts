@@ -61,8 +61,8 @@ describe("embedded MolStudio surface-engine assets", () => {
   test("the embedded module instantiates and exposes the marching-cubes ABI", async () => {
     const { instance } = await WebAssembly.instantiate(wasmBytes, {});
     const exports = instance.exports as Record<string, unknown>;
-    // 0.1.7 adds the box-downsample ABI (ds_*) that `downsampleGridRemote` drives
-    // in the worker; 0.1.6 only had the marching-cubes grid/mesh calls.
+    // 0.1.8 still ships the box-downsample ABI (ds_*). Open uses in-process
+    // `ds_from_staging`; the worker protocol remains for hosts and tests.
     const functions = [
       "grid_begin",
       "grid_commit",
@@ -90,10 +90,8 @@ describe("embedded MolStudio surface-engine assets", () => {
     for (const marker of ["self.onmessage", '"init"', '"mesh"', '"lines"', '"ready"']) {
       expect(MOLSTUDIO_SURFACE_WORKER_SOURCE).toContain(marker);
     }
-    // 0.1.7 runs the oversized-grid box downsample inside this same worker
-    // (`downsampleGridRemote`, dist/compute/types.js). A stale copy regenerated
-    // from an older package would silently push that work back onto the main
-    // thread — no error, just the fixed cost we just measured away.
+    // Keep the downsample protocol markers so a stale worker from an older
+    // package is still caught, even though open no longer requires it.
     for (const marker of ['"downsample"', '"downsampled"']) {
       expect(MOLSTUDIO_SURFACE_WORKER_SOURCE).toContain(marker);
     }

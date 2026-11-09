@@ -234,7 +234,7 @@ These were read out of the installed `dsh-better-sidebar` and
     this file wrongly concluded made `.cmm` unrenderable. MolStudio builds the
     shape node itself: `MolStudio.loadMarkers(set)` adds a set as one object, and
     `setMarkerColor` / `setMarkerSize` drive its display. **This API does not
-    exist in 0.1.3** — markers need ≥ 0.1.4 and the repo pins `^0.1.7` (the wasm
+    exist in 0.1.3** — markers need ≥ 0.1.4 and the repo pins `^0.1.8` (the wasm
     wiring below needs 0.1.6+); lowering the pin silently turns every marker model
     back into an error and disables the wasm engine. `src/client/cmm.ts` therefore
     only has to produce `MarkerSet[]`; `loadIntoStudio` hands each set to
@@ -256,15 +256,13 @@ These were read out of the installed `dsh-better-sidebar` and
     installed package moves without a re-sync, so a MolStudio bump is
     `bun install` + `bun run sync:molstudio-assets`. `StudioProps.studioOptions`
     and `MolStudioOptions.surfaceEngine` do not exist before 0.1.6, so the pin is
-    `^0.1.7` — lowering it is a type error (and forcing it disables the engine).
-    **0.1.7 keeps every default and hook the same** (both asset URLs still resolve
-    from `import.meta.url`, `SurfaceEngineAssets` is unchanged), but it routes the
-    oversized-grid downsample through the same worker
-    (`downsampleGridRemote`, new `downsample`/`downsampled` messages) and makes the
-    engine session lazy (`gpuIsosurfacePath` decides the eager start). Two
-    consequences for this repo: the embedded worker *must* be regenerated on every
-    bump or the downsample silently falls back to the main thread, and `preferMainThread`
-    removes that off-thread tier — keep the worker tier enabled.
+    `^0.1.8` — lowering it is a type error (and forcing it disables the engine).
+    **0.1.8 keeps every default and hook the same** (both asset URLs still resolve
+    from `import.meta.url`, `SurfaceEngineAssets` is unchanged). Periodic solids
+    match Mol* `useGpu` and stay lazy (no worker on open). Oversized grids
+    downsample in-process (`ds_from_staging`); the worker still speaks
+    `downsample`/`downsampled` so a stale embedded worker is caught. Keep the
+    worker tier enabled: `preferMainThread` removes it.
 
 ## DSH version coupling
 

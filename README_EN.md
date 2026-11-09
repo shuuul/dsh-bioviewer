@@ -42,36 +42,17 @@ head to head (Chrome 157 / V8, single thread, real EMDB data):
 The denser the surface, the closer the ratio gets to its floor: about 2-5× once a grid
 produces millions of triangles (a 10-million-triangle noise grid measured 3.4×).
 
-**Opening a map did not get faster — it got slower.** Same load path (`loadVolume`,
-median of 3-5):
+From [`@molstudio/core`](https://www.npmjs.com/package/@molstudio/core) **0.1.8**, periodic
+solid isosurfaces use Mol\*'s GPU texture-mesh again (the same `useGpu` gate as 0.1.5).
+Opening a typical cryo-EM map **does not start a worker**. Wasm accelerates the CPU path
+only: wireframe, missing float textures, software GL. Oversized grids downsample
+in-process with wasm `ds_from_staging`; if the reduced grid fits, it then takes the GPU path.
 
-| Map | Grid | 0.1.5 | 0.1.6 + wasm | Grid 0.1.6 actually meshes |
-| --- | --- | --- | --- | --- |
-| EMD-1832 | 64³ | 1.44 s | 2.14 s | 64³ |
-| EMD-3318 | 112³ | 1.49 s | 2.06 s | 112³ |
-| EMD-10088 | 290³ | **0.61 s** | 2.22 s | **145³** (2× downsample) |
-| EMD-10087 | 500³ | **4.26 s** | 5.41 s | **250³** (2× downsample) |
-
-Three effects stack up:
-
-1. 0.1.6 pays about 2 s of fixed pipeline cost per load (64³ and 250³ differ by only
-   0.3 s), which swamps the few hundred milliseconds meshing saves;
-2. for periodic grids — every EMDB map — 0.1.6 **no longer uses Mol\*'s GPU
-   isosurface** and always meshes on the CPU;
-3. grids above the texture limit are **downsampled unconditionally** (290³ → 145³,
-   500³ → 250³; a host cannot turn it off), and the relative iso level is resolved
-   against the downsampled statistics (2σ 0.0157 → 0.0143), so it renders a different
-   surface — 841 k triangles collapse to 112 k on EMD-10088.
-
-The measurement ran in headless Chrome with software GL (SwiftShader), not on your GPU.
-The 1.4 s 0.1.5 rows above pay for software rasterising Mol\*'s GPU path (the same mesh
-costs 9 ms of CPU marching cubes), so do not read the 64³/112³ gap as a real-GPU
-regression; on real hardware 0.1.5 is faster still. Points 2 and 3 do not depend on the
-GPU at all.
-
-The measurement ran in headless Chrome with software GL (SwiftShader), not on your GPU:
-on real hardware 0.1.5's GPU isosurface is faster still, so the gap does not shrink;
-wasm wins clearly only when a grid is large enough that 0.1.5 has to mesh on the CPU too.
+On real hardware (ANGLE Metal, Apple M2 Pro): a 300³ periodic solid opens at parity with
+0.1.5 (~455–473 ms, no worker, texture-mesh), with iso-drag around 17 ms; wireframe iso is
+about 8× (~1 s → ~120 ms); a 512³ map downsamples to 256³ then stays on GPU (open 2.9 →
+1.3 s, iso about 230–280× vs 0.1.5's ~4 s CPU). Earlier SwiftShader open-time tables are
+not the product claim.
 
 ## Screenshots
 

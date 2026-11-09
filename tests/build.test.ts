@@ -513,6 +513,16 @@ describe("C4 embedded surface-engine assets", () => {
     expect(src).toContain("createObjectURL");
     expect(src).not.toMatch(/\/plugins\/[^"']*\.js/);
   });
+
+  test("the bundle still embeds the downsample protocol", () => {
+    const src = readArtifact(clientHalf);
+    // Open uses in-process `ds_from_staging`, but the embedded worker still
+    // speaks `downsample`/`downsampled` and the module still exports `ds_*`.
+    // A stale copy from an older package would drop those markers.
+    for (const marker of ['"downsample"', '"downsampled"', "ds_run"]) {
+      expect(src).toContain(marker);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

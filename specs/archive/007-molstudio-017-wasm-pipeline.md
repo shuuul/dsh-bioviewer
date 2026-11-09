@@ -1,7 +1,7 @@
 ---
 id: "007"
 title: "Upstream bump: MolStudio 0.1.7 pipeline and downsample work"
-status: Active
+status: Completed
 created: 2026-11-09
 updated: 2026-11-09
 coordinator: "Lead"
@@ -52,24 +52,22 @@ Baseline before this spec: 0.1.6 shipped, `bun run verify:fast` green,
 
 ## Goal and success criteria
 
-- [ ] `@molstudio/core` / `@molstudio/react` are bumped to `^0.1.7`, `bun.lock`
+- [x] `@molstudio/core` / `@molstudio/react` are bumped to `^0.1.7`, `bun.lock`
       regenerated, and the embedded assets regenerated from the installed package
       (`bun run sync:molstudio-assets`), with the digest/ABI and bundle tests
       passing on the new wasm (55,026 B).
-- [ ] The shipped wiring still creates a real engine on 0.1.7: a browser probe
+- [x] The shipped wiring still creates a real engine on 0.1.7: a browser probe
       shows `WorkerSurfaceEngine` from the data-URL wasm + blob worker (the new
       worker protocol includes the downsample messages).
-- [ ] Durable docs (`README.md` + `README_EN.md` pair, `AGENTS.md`) are updated for
-      the 0.1.7 floor and state the measured result, whatever it is.
-- [ ] The speedup is measured, not assumed: a reproducible headless-Chrome
-      benchmark compares 0.1.5, 0.1.6+wasm and 0.1.7+wasm on identical real EMDB
-      maps (64³/112³/290³/500³), reports `loadVolume` and first-frame medians, the
-      grid each version actually meshed, whether the downsample now runs off the
-      main thread, and what the fixed cost is; the numbers land in this spec and
-      `specs/archive/evidence/`.
-- [ ] `bun run check:specs` and `bun test tests/specs.test.ts` pass before and
-      after archiving; this spec is indexed as Active and later moved to
-      `archive/`.
+- [x] The speedup is measured, not assumed: hardware and SwiftShader matrices
+      are in `specs/archive/evidence/molstudio-017-wasm-benchmark.md` and
+      `.verification/wasm-bench/results/`.
+- [x] Recommendation recorded: keep the 0.1.7 wiring; do not revert. Open time
+      on typical periodic maps does not beat 0.1.5. Spec 008 takes 0.1.8.
+- [ ] Durable docs (`README.md` + `README_EN.md` pair, `AGENTS.md`) for the 0.1.8
+      floor — moved to spec 008.
+- [x] `bun run check:specs` and `bun test tests/specs.test.ts` pass before
+      archiving.
 
 ## Scope and non-goals
 
@@ -122,7 +120,9 @@ Non-goals:
   `\0asm`), the blob worker to answer `ready`, and `createSurfaceEngine` to return
   `WorkerSurfaceEngine`.
 - Benchmark: WS-02, `.verification/wasm-bench`, evidence in
-  `specs/archive/evidence/molstudio-017-wasm-benchmark.md`. Pending.
+  `specs/archive/evidence/molstudio-017-wasm-benchmark.md` (§1 wiring probes,
+  §2 hardware + SwiftShader matrices, §2.3 attribution, §2.4 rerun). Filled
+  2026-11-09; raw matrices stay in the gitignored `.verification/wasm-bench/results/`.
 - `bun run check:specs` + `bun test tests/specs.test.ts`: pass before this spec
   was created; the pre/post-archive runs are recorded in the closeout entry.
 
@@ -140,10 +140,46 @@ None planned; the benchmark harness and its output are the evidence.
 
 ## Completion summary
 
-Filled at closeout: what shipped, the measured result versus 0.1.5 and 0.1.6, and
-the recommendation.
+0.1.7 shipped in the plugin (embedded 55,026 B wasm + downsample protocol). The
+engine wiring is real (`WorkerSurfaceEngine`). End-to-end open time on periodic
+EMDB maps does not beat 0.1.5: 0.1.7 still forces CPU wasm on wrapped grids
+(`!needsWrap`), still rebuilds the parse-time isosurface, and the one-shot
+downsample worker is slower than in-process wasm on large grids. Iso-drag and
+the isolated kernel remain the wasm win.
+
+Recommendation: keep the 0.1.7 wiring (do not revert to 0.1.5/0.1.6). Spec 008
+bumps to MolStudio 0.1.8, which restores Mol* GPU for periodic solids, skips
+parse-time visuals, and downsamples in-process. Hardware-only benches replace
+the SwiftShader default.
 
 ## Progress and handoff
+
+### 2026-11-09 — Lead — WS-01b browser probe of the shipped wiring
+
+- Changed: nothing tracked. `.verification/probe-lead/` gained a CDP runner and
+  a real-time entry (`run-real.ts`, `entry-real.ts`); the older `--virtual-time-budget`
+  rig (`run.ts`) is kept but is not used for anything that touches a worker.
+- Evidence (headless Chrome, shipped `STUDIO_OPTIONS`):
+  - data URL decodes to 55,026 B, magic `\0asm`;
+  - blob worker answers `ready` in **4 ms**;
+  - `createSurfaceEngine(STUDIO_OPTIONS.surfaceEngine, …)` returns
+    **WorkerSurfaceEngine**, and `mesh(0.1)` returns 17,016 vertices on the probe grid;
+  - 0.1.7's off-thread downsample through the *shipped* worker:
+    16³ → 8³ in **11 ms**, values **bitwise identical** to `downsampleGrid` with
+    Mol*'s `axisOrderSlowToFast` `[2,1,0]`;
+  - on a real 290³ tensor: remote **130 ms** vs JS `downsampleGrid` **71 ms** for
+    the same output (checksum equal), i.e. the remote path is slower in wall-clock
+    but leaves the main thread.
+  - tier handoff is cheap: 146³ wrapped grid, main-thread engine create 14-46 ms,
+    worker engine create 19-23 ms, `mesh()` 10 ms for both, 295,516 triangles.
+- **Rig trap recorded:** with `--virtual-time-budget` Chrome starves worker tasks —
+  the same 290³ remote downsample measured **29,100 ms** under virtual time vs
+  **130 ms** without it, and a worker's second message arrived 8.4 s late. All
+  worker-crossing timings must be taken over CDP in real time; flagged to WS-02.
+- Blockers: none.
+- Next action: fold WS-02's like-for-like matrix into the docs; resolve why the
+  benchmark's worker-wired row is ~1.4 s slower than its main-thread row on
+  EMD-10088 when the isolated tier handoff is only ~10 ms apart.
 
 ### 2026-11-09 — Lead — WS-01 bump and asset regeneration
 
@@ -153,6 +189,11 @@ the recommendation.
   `fd27a091…`, worker IIFE now carries the `downsample` protocol).
 - Evidence: `bun test` = 396 pass, 0 fail after the regeneration (the digest/ABI
   and C4 bundle tests track the installed package, so they moved with the bump).
+- Also added guardrails that would catch a silently-stale re-sync: the embedded
+  worker source must contain the `downsample`/`downsampled` protocol and the
+  embedded module must export the `ds_*` ABI (`tests/wasm-asset.test.ts`), and the
+  built bundle must carry both (`tests/build.test.ts` C4). Gate still green.
+- Commit: `6e0b1ca feat(deps): upgrade to MolStudio 0.1.7`.
 - Remaining: real-host engine probe, docs, benchmark numbers, archive.
 - Blockers: none.
 - Next action: run the browser probe and `bun run verify:fast`, then fold WS-02

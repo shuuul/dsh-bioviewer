@@ -1,7 +1,7 @@
 /**
  * MolStudio's wasm surface engine, wired for the DSH shell.
  *
- * `@molstudio/core` 0.1.6 replaced the parsed Mol* isosurface with its own
+ * `@molstudio/core` 0.1.6+ replaced the parsed Mol* isosurface with its own
  * `molstudio-isosurface` representation and a WebAssembly marching-cubes
  * kernel (54 KB). `createSurfaceEngine` (`dist/compute/index.js`) picks a
  * Worker first, then the same wasm on the main thread, then `null`; the volume
