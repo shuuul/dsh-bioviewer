@@ -20,6 +20,7 @@ explicit acceptance evidence, or a handoff. Specs record execution, not permanen
 | [006 — Upstream bump: MolStudio 0.1.6 wasm surface engine](archive/006-molstudio-016-wasm.md) | 2026-11-09 | Ship the 0.1.6 wasm isosurface engine in the client bundle, measure 0.1.5 vs 0.1.6 end to end and the kernel in isolation. |
 | [007 — Upstream bump: MolStudio 0.1.7 pipeline and downsample work](archive/007-molstudio-017-wasm-pipeline.md) | 2026-11-09 | 0.1.7 wiring is real; open time on periodic maps does not beat 0.1.5. Keep wiring; 0.1.8 is the fix. |
 | [008 — Upstream bump: MolStudio 0.1.8 GPU path](archive/008-molstudio-018-gpu-path.md) | 2026-11-09 | 0.1.8 bump; hardware GPU 0.1.5 vs shipped; 300³ solid open at parity, iso-drag ~17 ms |
+| [009 — Upstream bump: MolStudio 0.1.9](archive/009-molstudio-019-upgrade.md) | 2026-11-10 | 0.1.9 bump; assets re-synced (55,105 B); two consumer fixes: stuck `opening` mark on dispatch failure, error card + remount retry on failed studio creation. |
 
 ## Lifecycle and ownership
 
