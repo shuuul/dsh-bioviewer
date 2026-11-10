@@ -8,7 +8,7 @@ import {
   type OpenSink,
 } from "../src/client/agent-opens";
 import type { StudioLike } from "../src/client/load";
-import { latestStudio, registerStudio, resetStudios, setStudioReadyHandler, takePending } from "../src/client/studios";
+import { isOpening, latestStudio, registerStudio, resetStudios, setStudioReadyHandler, takePending } from "../src/client/studios";
 import type { OpenRequest } from "../src/shared/opens";
 
 /** A fetch double that records its calls and answers from a script. */
@@ -214,6 +214,25 @@ describe("handleViewerRequest", () => {
     const studio = { loadEmdb: async () => {} } as unknown as StudioLike;
     registerStudio("s1", studio, () => {});
     expect(added).toEqual([second]);
+  });
+
+  test("a dispatch failure unmarks the opening so the next add retries a fresh tab", () => {
+    const calls: unknown[] = [];
+    const sink: OpenSink = {
+      openFile: () => calls.push("file"),
+      openTab: (seed) => {
+        calls.push(`tab:${seed.path}`);
+        if (calls.length === 1) throw new Error("the tab type is disabled");
+      },
+    };
+    // The first open throws: the host never got its tab, so isOpening must not
+    // stay latched — otherwise every later add waits on a studio that can
+    // never register.
+    expect(() => handleViewerRequest(sink, "s1", STRUCTURE_REQUEST, () => {})).toThrow("disabled");
+    expect(isOpening("s1")).toBe(false);
+
+    handleViewerRequest(sink, "s1", ADD_STRUCTURE, () => {});
+    expect(calls).toEqual(["tab:pdb:1CBS", "tab:emdb:EMD-1234"]);
   });
 });
 

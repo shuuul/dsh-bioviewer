@@ -68,6 +68,11 @@ export function isOpening(sessionId: string): boolean {
   return opening.has(sessionId);
 }
 
+/** The tab that was marked {@link markOpening} failed to open — clear the mark. */
+export function clearOpening(sessionId: string): void {
+  opening.delete(sessionId);
+}
+
 /** Queue an add until the in-flight tab's studio registers. */
 export function enqueuePending(sessionId: string, request: OpenRequest): void {
   const queue = pending.get(sessionId) ?? [];

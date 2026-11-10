@@ -19,6 +19,7 @@ import { isOpenRequest, type OpenRequest } from "../shared/opens";
 import { loadIntoStudio } from "./load";
 import { payloadFromOpenRequest, type ReadBioFile } from "./open-payload";
 import {
+  clearOpening,
   enqueuePending,
   isOpening,
   latestStudio,
@@ -137,7 +138,14 @@ export function handleViewerRequest(
     }
   }
   markOpening(sessionId);
-  dispatchOpen(sink, sessionId, request);
+  try {
+    dispatchOpen(sink, sessionId, request);
+  } catch (error) {
+    // A failed dispatch leaves no tab to host the studio: unmark so a later
+    // `add` retries a fresh tab instead of parking in `pending` forever.
+    clearOpening(sessionId);
+    throw error;
+  }
 }
 
 /** An abortable delay. Resolves early — never rejects — when the signal fires. */
