@@ -8,3 +8,11 @@ test("database theme changes preserve the loaded structure; accession changes lo
   expect(result.stderr.toString()).toBe("");
   expect(result.exitCode).toBe(0);
 }, 6000);
+
+test("a failed MolStudio creation shows an error card whose retry remounts and loads", () => {
+  const result = Bun.spawnSync([process.execPath, join(import.meta.dir, "fixtures/viewer-studio-error.tsx")], {
+    timeout: 5000,
+  });
+  expect(result.stderr.toString()).toBe("");
+  expect(result.exitCode).toBe(0);
+}, 6000);

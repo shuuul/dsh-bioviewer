@@ -82,6 +82,8 @@ export function BioViewer({ payload, theme, sessionId }: BioViewerProps): ReactE
   const [settled, setSettled] = useState<LoadAttempt | null>(null);
   /** Bumped by Retry: a new value re-runs the load effect below. */
   const [attempt, setAttempt] = useState(0);
+  /** Bumped to remount `<Studio>` after a failed creation (`onError` with no studio). */
+  const [studioRetry, setStudioRetry] = useState(0);
 
   useEffect(() => {
     if (studio === null) return;
@@ -115,6 +117,11 @@ export function BioViewer({ payload, theme, sessionId }: BioViewerProps): ReactE
   const handleStudioError = useCallback((cause: Error): void => {
     setStudioError(cause.message);
   }, []);
+  /** Remount `<Studio>`: its creation effect only runs on mount, so a retry needs a fresh key. */
+  const retryStudio = useCallback((): void => {
+    setStudioError(null);
+    setStudioRetry((value) => value + 1);
+  }, []);
   const retry = useCallback((): void => {
     setAttempt((value) => value + 1);
   }, []);
@@ -130,7 +137,20 @@ export function BioViewer({ payload, theme, sessionId }: BioViewerProps): ReactE
   const error = current?.error ?? null;
 
   let overlay: ReactElement | null = null;
-  if (studio === null) {
+  if (studio === null && studioError !== null) {
+    // `MolStudio.create` (or a rejected `onReady` promise in 0.1.9) failed:
+    // the pane must not keep a spinner running under an error the reader can
+    // retry, and the banner below stays quiet while the card carries it.
+    overlay = (
+      <StatusCard
+        tone="error"
+        title={t("error.title", { title: payload.title })}
+        detail={studioError}
+        retryLabel={t("error.retry")}
+        onRetry={retryStudio}
+      />
+    );
+  } else if (studio === null) {
     overlay = <StatusCard busy title={t("start.title")} detail={t("start.detail")} />;
   } else if (status === "error" && error !== null) {
     overlay = (
@@ -152,10 +172,11 @@ export function BioViewer({ payload, theme, sessionId }: BioViewerProps): ReactE
     <div
       style={ROOT_STYLE}
       data-dsh-bioviewer-root=""
-      data-dsh-bioviewer-status={studio === null ? "starting" : status}
+      data-dsh-bioviewer-status={studio === null ? (studioError === null ? "starting" : "error") : status}
     >
       <div style={STAGE_STYLE}>
         <Studio
+          key={studioRetry}
           theme={theme}
           locale={locale}
           onLocaleChange={onLocaleChange}
@@ -164,7 +185,7 @@ export function BioViewer({ payload, theme, sessionId }: BioViewerProps): ReactE
           studioOptions={STUDIO_OPTIONS}
         />
         {overlay !== null && <div style={OVERLAY_STYLE}>{overlay}</div>}
-        {studioError !== null && (
+        {studio !== null && studioError !== null && (
           <div style={BANNER_STYLE} role="alert">
             <ErrorIcon size={14} />
             <span style={BANNER_TEXT_STYLE}>{studioError}</span>
