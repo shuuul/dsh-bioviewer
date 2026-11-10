@@ -15,7 +15,7 @@
 
 ## 密度图加速（Wasm）
 
-从 [`@molstudio/core`](https://www.npmjs.com/package/@molstudio/core) 0.1.6 起，密度图的等值面改由 MolStudio 自带的 WebAssembly marching-cubes 内核重建。插件把这份 54 KB 的 `molstudio-wasm-engine.wasm` 和它的 worker 一起以 base64 内嵌进 `lib/client.js`，随插件分发：不新增资源路由，不依赖 `node_modules`、CDN 或构建机路径，离线可用。运行时先试 worker 里的引擎（不占界面线程），没有 worker 就用主线程里的同一份 wasm，两者都不可用才回落到 Mol\* 自己的等值面。资产由 `bun run sync:molstudio-assets` 从已安装的 `@molstudio/core` 重新生成。
+从 [`@molstudio/core`](https://www.npmjs.com/package/@molstudio/core) 0.1.6 起，密度图的等值面改由 MolStudio 自带的 WebAssembly marching-cubes 内核重建。插件把这份 ~55 KB 的 `molstudio-wasm-engine.wasm` 和它的 worker 一起以 base64 内嵌进 `lib/client.js`，随插件分发：不新增资源路由，不依赖 `node_modules`、CDN 或构建机路径，离线可用。运行时先试 worker 里的引擎（不占界面线程），没有 worker 就用主线程里的同一份 wasm，两者都不可用才回落到 Mol\* 自己的等值面。资产由 `bun run sync:molstudio-assets` 从已安装的 `@molstudio/core` 重新生成。
 
 同样的网格、同样的等值面、同样的三角形数，直接对比两套 marching cubes（Chrome 157 / V8，单线程，真实 EMDB 数据）：
 
@@ -31,6 +31,8 @@
 从 [`@molstudio/core`](https://www.npmjs.com/package/@molstudio/core) **0.1.8** 起，周期固体等值面重新走 Mol\* 的 GPU texture-mesh（与 0.1.5 同一套 `useGpu` 判定）。打开一张典型冷冻电镜密度图时**不启动 worker**。Wasm 只加速 CPU 路径：线框、没有 float 纹理、软件 GL。超过 GPU 纹理上限的网格在进程内用 wasm `ds_from_staging` 降采样，降完若能进 GPU 就走 GPU。
 
 真机（ANGLE Metal，Apple M2 Pro）上：300³ 周期固体打开与 0.1.5 持平（~455–473 ms，无 worker，texture-mesh），等值面拖动约 17 ms；线框 iso 约 8 倍（~1 s → ~120 ms）；512³ 先降到 256³ 再走 GPU，打开 2.9 → 1.3 s，iso 约 230–280 倍（~4 s → ~14–17 ms）。先前用 SwiftShader 测得的打开时间不代表真机路径，已从产品说明中撤下。
+
+当前依赖为 **0.1.9**：损坏的密度图或空结构现在会直接报错（加载失败会拒绝并清掉半成品状态，面板给出错误和重试），EMDB 作者推荐阈值取不到时地图仍按解析阈值打开。
 
 ## 截图
 

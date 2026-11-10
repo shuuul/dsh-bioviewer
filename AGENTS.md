@@ -194,7 +194,11 @@ These were read out of the installed `dsh-better-sidebar` and
    load sees the committed objects; the queue still yields before reading —
    harmless on 0.1.5 and required on the 0.1.4 build, where snapshots were batched
    on a timer and a resolved loader alone did not guarantee its objects were in
-   the snapshot.
+   the snapshot. **0.1.9** narrows what a snapshot can contain: a volume or
+   marker set whose cell is still pending is omitted until it resolves, and a
+   failed `loadStructure`/`loadVolume` now discards its partial node and
+   rejects instead of leaving a data cell behind. Both changes lean the same way
+   for the queue: removal only ever reads committed objects.
    Database-tab payload identities must stay stable across theme/parent renders:
    `BioViewer` intentionally uses a new payload identity as the file-reload signal.
 
@@ -234,12 +238,13 @@ These were read out of the installed `dsh-better-sidebar` and
     this file wrongly concluded made `.cmm` unrenderable. MolStudio builds the
     shape node itself: `MolStudio.loadMarkers(set)` adds a set as one object, and
     `setMarkerColor` / `setMarkerSize` drive its display. **This API does not
-    exist in 0.1.3** — markers need ≥ 0.1.4 and the repo pins `^0.1.8` (the wasm
+    exist in 0.1.3** — markers need ≥ 0.1.4 and the repo pins `^0.1.9` (the wasm
     wiring below needs 0.1.6+); lowering the pin silently turns every marker model
     back into an error and disables the wasm engine. `src/client/cmm.ts` therefore
     only has to produce `MarkerSet[]`; `loadIntoStudio` hands each set to
     `loadMarkers`, and markers render *beside* other objects, which is the point
-    (prompt points over a density map).
+    (prompt points over a density map). 0.1.9 `structuredClone`s the set, so a
+    caller that mutates a set after loading can no longer corrupt state.
 
 13. **The wasm surface engine is embedded, never routed.** `@molstudio/core` 0.1.6+
     builds its 55 KB `molstudio-wasm-engine.wasm` and its worker from
@@ -256,9 +261,13 @@ These were read out of the installed `dsh-better-sidebar` and
     installed package moves without a re-sync, so a MolStudio bump is
     `bun install` + `bun run sync:molstudio-assets`. `StudioProps.studioOptions`
     and `MolStudioOptions.surfaceEngine` do not exist before 0.1.6, so the pin is
-    `^0.1.8` — lowering it is a type error (and forcing it disables the engine).
-    **0.1.8 keeps every default and hook the same** (both asset URLs still resolve
-    from `import.meta.url`, `SurfaceEngineAssets` is unchanged). Periodic solids
+    `^0.1.9` — lowering it is a type error (and forcing it disables the engine).
+    **0.1.9 keeps every default and hook the same** (both asset URLs still resolve
+    from `import.meta.url`, `SurfaceEngineAssets` is unchanged) while hardening
+    the edges: failed loads reject and discard their partial node instead of
+    silently adding nothing, a worker `onmessageerror` settles pending requests
+    and disposes the engine, and `onmessage` throws on unknown request kinds.
+    Periodic solids
     match Mol* `useGpu` and stay lazy (no worker on open). Oversized grids
     downsample in-process (`ds_from_staging`); the worker still speaks
     `downsample`/`downsampled` so a stale embedded worker is caught. Keep the

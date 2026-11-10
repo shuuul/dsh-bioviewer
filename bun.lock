@@ -13,8 +13,8 @@
         "@deepseek-ai/dsh-session": "^0.2.2-rc.1",
         "@deepseek-ai/dsh-tools": "^0.2.2-rc.1",
         "@deepseek-ai/dsh-working-directory": "^0.2.2-rc.1",
-        "@molstudio/core": "^0.1.8",
-        "@molstudio/react": "^0.1.8",
+        "@molstudio/core": "^0.1.9",
+        "@molstudio/react": "^0.1.9",
         "@types/bun": "^1.4.4",
         "@types/react": "^18.3.31",
         "@types/react-dom": "^18.3.7",
@@ -267,9 +267,9 @@
 
     "@mermaid-js/parser": ["@mermaid-js/parser@1.2.1", "", { "dependencies": { "@chevrotain/types": "~11.1.2" } }, "sha512-n12NohV3mrUyUL2o93IgG/ifeW9FTyeJn3zDxkhwa8MJ9Fxg3HQMlA3RiGmD/3UnJvheztkjjQAjA2T4LmUcpw=="],
 
-    "@molstudio/core": ["@molstudio/core@0.1.8", "", { "peerDependencies": { "molstar": "^5.13.1" } }, "sha512-7gFBKgQtuUD36c6EWmqIUI872fmW7fmHK9rTKq008WjbWVGIW/S/NJTaFM+T/JbUg07Z7y3yRc3mGy6czHN4Tw=="],
+    "@molstudio/core": ["@molstudio/core@0.1.9", "", { "peerDependencies": { "molstar": "^5.13.1" } }, "sha512-J5V80Yncusv6gaurnKMPXUdpY/EChqu48+hgQoOleNrZ3lRtZbbIMmJ2BzGohfIhnDvRBSl9F1uM8x1ESDraPA=="],
 
-    "@molstudio/react": ["@molstudio/react@0.1.8", "", { "dependencies": { "@molstudio/core": "^0.1.8" }, "peerDependencies": { "molstar": "^5.13.1", "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-opdRZ9lkEnghZu1OHgBzHFRN5MsFAn3GwdjZ9p2y6Vph3evWe0XF0iYn4PNuEqPhnbAHzoc/Xok4EmtBVPRKTA=="],
+    "@molstudio/react": ["@molstudio/react@0.1.9", "", { "dependencies": { "@molstudio/core": "^0.1.9" }, "peerDependencies": { "molstar": "^5.13.1", "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-ZfIDiePPmXpQL9Odcej9ySGvH9omWKClVtgUE1vTzteY/m8UY73myhsX4vxSn7HVYW/yfCRW2chstR4UVw/TlQ=="],
 
     "@oxlint/binding-android-arm-eabi": ["@oxlint/binding-android-arm-eabi@1.90.0", "", { "os": "android", "cpu": "arm" }, "sha512-sgfalb1HuxYjiAa4wESZ626z1FGusqNcXYHyB5oIOEprS2sbPg0UYEfo83uF1GNG70DIfZxHkXuE6KFrlSdn8Q=="],
 

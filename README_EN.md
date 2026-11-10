@@ -22,7 +22,7 @@ stack as the [BioViewer VS Code extension](https://github.com/shuuul/bioviewer).
 
 Since [`@molstudio/core`](https://www.npmjs.com/package/@molstudio/core) 0.1.6, density-map
 isosurfaces are rebuilt by a WebAssembly marching-cubes kernel shipped inside MolStudio.
-The plugin embeds that 54 KB `molstudio-wasm-engine.wasm` together with its worker as
+The plugin embeds that ~55 KB `molstudio-wasm-engine.wasm` together with its worker as
 base64 in `lib/client.js`, so it travels with the plugin: no extra asset route, no
 `node_modules`, CDN or build-machine path, and it works offline. At runtime the worker
 tier is tried first (the UI thread stays free), then the same wasm on the main thread,
@@ -53,6 +53,11 @@ On real hardware (ANGLE Metal, Apple M2 Pro): a 300³ periodic solid opens at pa
 about 8× (~1 s → ~120 ms); a 512³ map downsamples to 256³ then stays on GPU (open 2.9 →
 1.3 s, iso about 230–280× vs 0.1.5's ~4 s CPU). Earlier SwiftShader open-time tables are
 not the product claim.
+
+The current dependency is **0.1.9**: a malformed map or an empty structure now fails
+visibly (the load rejects, the partial state is cleaned up, and the pane shows the
+error with a retry), and an EMDB map whose author-recommended contour cannot be
+fetched still opens at its parsed contour.
 
 ## Screenshots
 

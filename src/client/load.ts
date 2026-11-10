@@ -103,8 +103,8 @@ export function loadIntoStudio(studio: StudioLike, payload: ViewerPayload, signa
     // MolStudio 0.1.4 publishes hierarchy snapshots with setTimeout(0)
     // (MolStudio.ts:187-195); 0.1.5 flushes a scheduled rebuild inside
     // `getSnapshot()`, but this build must also be correct on 0.1.4. Yield
-    // before reading the replacement snapshot, including after a failed load
-    // which may have left partial objects.
+    // before reading the replacement snapshot; 0.1.9 already cleans up a
+    // failed load's partial node, so no stale object survives the read.
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     signal?.throwIfAborted();
     if (payload.kind === "structure") {
